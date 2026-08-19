@@ -72,7 +72,8 @@ export default function Purchases() {
     const [isEditingProduct, setIsEditingProduct] = useState(false);
     const [editProductId, setEditProductId] = useState<string | null>(null);
     const [imageFile, setImageFile] = useState<File | null>(null);
-
+    console.log("editProductId", editProductId);
+    // Log the imageFile state to check if it's being set correctly
     // Supplier Modal States
     const [showSupplierModal, setShowSupplierModal] = useState(false);
     const [newSupplierName, setNewSupplierName] = useState("");
@@ -276,6 +277,7 @@ export default function Purchases() {
             console.log("Sending payload:", payload);
 
             const response = await api.post("/purchases", payload);
+            console.log("Purchase response:", response.data);
 
             showToast(`Purchase "${purchaseNumber}" saved successfully!`, "success");
 

@@ -1,17 +1,8 @@
 // src/pages/reports/ReportsPage.tsx
-import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useToast } from "../../store/toastStore";
-import {
-    getStockInHand,
-    getSalesReport,
-    getPurchaseReport,
-    getCustomerReport,
-    getProfitLossReport,
-    exportStockToExcel,
-    exportStockToPDF,
-    exportSalesToExcel,
-} from "../../api/reportsApi";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+// import { useToast } from "../../store/toastStore";
+
 
 // Import report components
 import StockInHandReport from "./StockInHandReport";
@@ -29,8 +20,8 @@ interface ReportTab {
 
 export default function ReportsPage() {
     const navigate = useNavigate();
-    const location = useLocation();
-    const { showToast } = useToast();
+    // const location = useLocation();
+    // const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState("stock-in-hand");
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 

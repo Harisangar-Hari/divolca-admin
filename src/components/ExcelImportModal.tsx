@@ -31,6 +31,7 @@ export default function ExcelImportModal({
     const [previewData, setPreviewData] = useState<ExcelProduct[]>([]);
     const [step, setStep] = useState<"upload" | "preview" | "importing">("upload");
     const { showToast } = useToast();
+    console.log("file", file);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
