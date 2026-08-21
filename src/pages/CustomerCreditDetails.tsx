@@ -149,6 +149,10 @@ export default function CustomerCreditDetails() {
     };
 
     const getStatusBadge = (status: number, balanceAmount: number) => {
+
+        if (status === 4) {
+            return { label: "Cancelled", color: "bg-gray-100 text-gray-800" };
+        }
         // If balance is 0, it's fully paid regardless of status
         if (balanceAmount === 0) {
             return { label: "Paid", color: "bg-green-100 text-green-800" };
@@ -159,7 +163,9 @@ export default function CustomerCreditDetails() {
             1: { label: "Completed", color: "bg-green-100 text-green-800" },
             2: { label: "Cancelled", color: "bg-red-100 text-red-800" },
             3: { label: "Refunded", color: "bg-gray-100 text-gray-800" },
+            4: { label: "Cancelled", color: "bg-gray-100 text-gray-800" },
         };
+
         return statusMap[status] || { label: "Unknown", color: "bg-gray-100 text-gray-800" };
     };
 

@@ -1,5 +1,5 @@
 // src/pages/Products.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   getProducts,
   createProduct,
@@ -60,6 +60,7 @@ export default function Products() {
   const [loading, setLoading] = useState(true);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -87,6 +88,21 @@ export default function Products() {
     loadCategories();
     loadBrands();
   }, []);
+
+  // ✅ Filter products based on search term
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm.trim()) return products;
+
+    const term = searchTerm.toLowerCase().trim();
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(term) ||
+      p.barcode.toLowerCase().includes(term) ||
+      p.sku.toLowerCase().includes(term) ||
+      (p.categories?.name && p.categories.name.toLowerCase().includes(term)) ||
+      (p.brand?.name && p.brand.name.toLowerCase().includes(term)) ||
+      (p.description && p.description.toLowerCase().includes(term))
+    );
+  }, [products, searchTerm]);
 
   const loadProducts = async () => {
     try {
@@ -213,17 +229,14 @@ export default function Products() {
         if (item.categoryName) {
           let category = categories.find(c => c.name.toLowerCase() === item.categoryName.toLowerCase());
           if (!category) {
-            // ✅ Create new category and ensure we get a valid response
             const newCategory = await findOrCreateCategory(item.categoryName);
             if (newCategory && newCategory.id) {
               category = newCategory;
-              // ✅ Only update state if we have a valid category
               setCategories(prev => [...prev, category!]);
             } else {
               console.error('Failed to create category:', item.categoryName);
             }
           }
-          // ✅ Only set categoryId if category exists
           if (category) {
             categoryId = category.id;
           }
@@ -233,17 +246,14 @@ export default function Products() {
         if (item.brandName) {
           let brand = brands.find(b => b.name.toLowerCase() === item.brandName.toLowerCase());
           if (!brand) {
-            // ✅ Create new brand and ensure we get a valid response
             const newBrand = await findOrCreateBrand(item.brandName);
             if (newBrand && newBrand.id) {
               brand = newBrand;
-              // ✅ Only update state if we have a valid brand
               setBrands(prev => [...prev, brand!]);
             } else {
               console.error('Failed to create brand:', item.brandName);
             }
           }
-          // ✅ Only set brandId if brand exists
           if (brand) {
             brandId = brand.id;
           }
@@ -256,7 +266,6 @@ export default function Products() {
         });
       }
 
-      // ✅ Bulk import the products
       const result = await bulkImportProducts(processedProducts);
       await loadProducts();
       setIsImportModalOpen(false);
@@ -272,7 +281,6 @@ export default function Products() {
   // Helper functions for creating category and brand
   const findOrCreateCategory = async (name: string): Promise<Category | null> => {
     try {
-      // 1. Check if category already exists in database
       const existingCategories = await api.get("/categories");
       const existingCategory = existingCategories.data.find(
         (c: any) => c.Name.toLowerCase() === name.toLowerCase()
@@ -282,12 +290,10 @@ export default function Products() {
         return existingCategory;
       }
 
-      // 2. If not exists, create new category
       const res = await api.post("/categories", { name });
       const newCategory = res.data;
 
       if (newCategory && newCategory.id) {
-        // Update local state with new category
         setCategories(prev => [...prev, newCategory]);
         return newCategory;
       }
@@ -298,10 +304,8 @@ export default function Products() {
     }
   };
 
-  // ✅ Helper: Find or create brand (checks database directly)
   const findOrCreateBrand = async (name: string): Promise<Brand | null> => {
     try {
-      // 1. Check if brand already exists in database
       const existingBrands = await api.get("/brands");
       const existingBrand = existingBrands.data.find(
         (b: any) => b.Name.toLowerCase() === name.toLowerCase()
@@ -311,12 +315,10 @@ export default function Products() {
         return existingBrand;
       }
 
-      // 2. If not exists, create new brand
       const res = await api.post("/brands", { name });
       const newBrand = res.data;
 
       if (newBrand && newBrand.id) {
-        // Update local state with new brand
         setBrands(prev => [...prev, newBrand]);
         return newBrand;
       }
@@ -336,6 +338,11 @@ export default function Products() {
     } catch (err) {
       console.error("Delete failed", err);
     }
+  };
+
+  // ✅ Clear search
+  const clearSearch = () => {
+    setSearchTerm("");
   };
 
   if (loading) {
@@ -391,15 +398,52 @@ export default function Products() {
         </div>
       </div>
 
+      {/* ✅ SEARCH BAR */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by name, barcode, SKU, category, or brand..."
+            className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition bg-white"
+          />
+          {searchTerm && (
+            <button
+              onClick={clearSearch}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        <div className="flex items-center text-sm text-gray-500 whitespace-nowrap">
+          {searchTerm ? (
+            <span>
+              Found <span className="font-semibold text-gray-700">{filteredProducts.length}</span> results
+            </span>
+          ) : (
+            <span>Showing all {products.length} products</span>
+          )}
+        </div>
+      </div>
+
       {/* ================= MOBILE VIEW ================= */}
       <div className="md:hidden space-y-3">
-        {products.length === 0 && (
+        {filteredProducts.length === 0 && (
           <div className="bg-white rounded-2xl border border-black/5 py-12 text-center text-black/30 text-sm">
-            No products yet — add your first one
+            {searchTerm ? "No products match your search" : "No products yet — add your first one"}
           </div>
         )}
 
-        {products.map((p) => {
+        {filteredProducts.map((p) => {
           const category = categories.find(c => c.id === p.categoryId);
           const lowStock = p.stockQty <= p.reorderLevel;
 
@@ -478,15 +522,15 @@ export default function Products() {
           </thead>
 
           <tbody>
-            {products.length === 0 && (
+            {filteredProducts.length === 0 && (
               <tr>
                 <td colSpan={9} className="p-10 text-center text-black/30">
-                  No products yet — add your first one
+                  {searchTerm ? "No products match your search" : "No products yet — add your first one"}
                 </td>
               </tr>
             )}
 
-            {products.map((p) => {
+            {filteredProducts.map((p) => {
               const category = categories.find(c => c.id === p.categoryId);
               const lowStock = p.stockQty <= p.reorderLevel;
 

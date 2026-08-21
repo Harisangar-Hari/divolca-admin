@@ -1,7 +1,8 @@
+// src/pages/sales/SaleDetail.tsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSaleById, returnSale } from "../api/salesApi";
-import { printReceipt, type ReceiptData } from "../utils/printReceipt";
+import { getSaleById, returnSale, cancelSale } from "../api/salesApi";
+import { printA4Receipt, type ReceiptData } from "../utils/printA4Receipt";
 
 export default function SaleDetail() {
     const { id } = useParams();
@@ -20,8 +21,7 @@ export default function SaleDetail() {
 
         try {
             const data = await getSaleById(id);
-            console.log('Mapped sale data:', data); // 👈 Debug log
-            console.log('Payments:', data.payments); // 👈 Debug log
+            console.log('Mapped sale data:', data);
             setSale(data);
         } catch (error) {
             console.error('Error loading sale:', error);
@@ -30,17 +30,54 @@ export default function SaleDetail() {
         }
     };
 
-    const isReturned = sale?.status === 1 || sale?.status === "Returned";
+    // ✅ Status helper functions
+    const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
+    const isReturned = () => sale?.status === 2 || sale?.status === "Returned" || sale?.status === "FULLY_RETURNED";
+    const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
 
+    // ✅ Get status based on status field
     const getStatus = () => {
-        if (isReturned) return "Returned";
+        if (isCancelled()) return "Cancelled";
+        if (isReturned()) return "Returned";
+        if (isCompleted()) return "Completed";
         if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "Partial";
-        if (sale?.paidAmount === 0 && sale?.balanceAmount > 0) return "Unpaid";
-        return "Completed";
+        if (sale?.balanceAmount === 0) return "Paid";
+        return "Unpaid";
+    };
+
+    // ✅ Get status color based on status field
+    const getStatusColor = () => {
+        if (isCancelled()) return "bg-gray-100 text-gray-600";
+        if (isReturned()) return "bg-red-50 text-red-600";
+        if (isCompleted()) return "bg-emerald-50 text-[#0B6E4F]";
+        if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "bg-amber-50 text-amber-700";
+        if (sale?.balanceAmount === 0) return "bg-emerald-50 text-[#0B6E4F]";
+        return "bg-red-50 text-red-600";
+    };
+
+    const handleCancel = async () => {
+        if (!sale) return;
+
+        const reason = prompt("Enter reason for cancellation (optional):");
+        if (reason === null) return;
+
+        const ok = confirm(`Are you sure you want to cancel invoice ${sale.invoiceNumber}?`);
+        if (!ok) return;
+
+        try {
+            setLoading(true);
+            await cancelSale(sale.id, reason || undefined);
+            alert("Sale cancelled successfully");
+            await loadSale();
+        } catch (err: any) {
+            alert(err?.response?.data?.message || "Failed to cancel sale");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleReturn = async () => {
-        if (!sale || isReturned) return;
+        if (!sale || isReturned() || isCancelled()) return;
 
         const ok = confirm("Return this invoice?");
         if (!ok) return;
@@ -60,25 +97,47 @@ export default function SaleDetail() {
     const handlePrint = () => {
         if (!sale) return;
 
+        const invoiceLevelDiscount = sale.invoiceDiscountAmount || 0;
+        const subTotal = sale.subTotal || 0;
+
+        let discountPercent = 0;
+        if (subTotal > 0 && invoiceLevelDiscount > 0) {
+            discountPercent = Math.round((invoiceLevelDiscount / subTotal) * 100);
+        }
+
+        const customerCreditBalance = sale.customer?.creditBalance || 0;
+        const currentBalance = sale.balanceAmount || 0;
+        const previousOutstanding = Math.max(0, customerCreditBalance - currentBalance);
+
+        const customerAddress = sale.customer?.address
+            ? `${sale.customer.address}${sale.customer.city ? `, ${sale.customer.city}` : ''}${sale.customer.country ? `, ${sale.customer.country}` : ''}`
+            : "";
+
         const receiptData: ReceiptData = {
             invoiceNumber: sale.invoiceNumber,
             items: (sale.items ?? []).map((item: any) => ({
                 name: item.productName || "Product",
                 quantity: item.quantity,
-                price: item.unitPrice,
-                discount: item.discount || 0,
-                warrantyMonths: item.warrantyMonths || 0
+                price: item.originalPrice || item.unitPrice || 0,
+                discountPercent: item.discountPercent || 0,
+                discountRs: item.discount || 0,
+                sku: item.sku || "",
             })),
-            customerName: sale.customer?.name,
-            customerPhone: sale.customer?.phone,
+            customerName: sale.customer?.name || "",
+            customerPhone: sale.customer?.phone || "",
+            customerAddress: customerAddress,
             total: sale.totalAmount || 0,
             paid: sale.paidAmount || 0,
             balance: sale.balanceAmount || 0,
             change: 0,
-            paymentMode: sale.paymentMode || "cash"
+            paymentMode: sale.paymentMode || "cash",
+            invoiceDiscount: discountPercent,
+            invoiceDiscountAmount: invoiceLevelDiscount,
+            previousOutstanding: previousOutstanding,
         };
-        console.log('Printing receipt with data:', receiptData); // 👈 Debug log
-        printReceipt(receiptData);
+
+        console.log('Printing A4 receipt with data:', receiptData);
+        printA4Receipt(receiptData);
     };
 
     if (loading) {
@@ -109,18 +168,16 @@ export default function SaleDetail() {
         );
     }
 
-    const statusColor = isReturned
-        ? "bg-red-50 text-red-600"
-        : sale.balanceAmount > 0
-            ? "bg-amber-50 text-amber-700"
-            : "bg-emerald-50 text-[#0B6E4F]";
+    const statusLabel = getStatus();
+    const statusColor = getStatusColor();
+    const isCancelledStatus = isCancelled();
+    const isReturnedStatus = isReturned();
 
     const totalItemDiscount = (sale.items ?? []).reduce((acc: number, item: any) => {
-        return acc + Number(item.discount || 0);
+        return acc + (Number(item.discount || 0) * Number(item.quantity || 1));
     }, 0);
-    const grandTotalDiscount = totalItemDiscount + Number(sale.invoiceDiscount || 0);
+    const grandTotalDiscount = totalItemDiscount + Number(sale.invoiceDiscountAmount || 0);
 
-    // ✅ Get payments from mapped data
     const payments = sale.payments || [];
     const hasPayments = payments.length > 0;
 
@@ -135,16 +192,21 @@ export default function SaleDetail() {
                             {sale.invoiceNumber}
                         </h1>
                         <span className={`text-[11px] font-semibold tracking-wide px-2.5 py-1 rounded-full ${statusColor}`}>
-                            {getStatus()}
+                            {statusLabel}
                         </span>
-                        {/* 👈 NEW: Show payment mode badge */}
                         <span className="text-[10px] font-mono bg-gray-100 px-2 py-1 rounded-full text-gray-600">
                             {sale.paymentMode?.toUpperCase() || 'CASH'}
                         </span>
+                        {isCancelledStatus && (
+                            <span className="text-[10px] font-mono bg-red-100 text-red-600 px-2 py-1 rounded-full">
+                                ⚠️ Cancelled
+                            </span>
+                        )}
                     </div>
 
                     <div className="flex gap-2">
-                        {!isReturned && sale.balanceAmount > 0 && (
+                        {/* Show Pay Credit button only if not returned, not cancelled, and has balance */}
+                        {!isReturnedStatus && !isCancelledStatus && sale.balanceAmount > 0 && (
                             <button
                                 onClick={() => navigate(`/sales/${sale.id}/pay-credit`)}
                                 className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition"
@@ -153,13 +215,24 @@ export default function SaleDetail() {
                             </button>
                         )}
 
-                        {!isReturned && (
+                        {/* Show Cancel button only if not returned and not cancelled */}
+                        {!isReturnedStatus && !isCancelledStatus && (
+                            <button
+                                onClick={handleCancel}
+                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 cursor-pointer transition shadow-sm"
+                            >
+                                Cancel Invoice
+                            </button>
+                        )}
+
+                        {/* Show Return button only if not returned and not cancelled */}
+                        {!isReturnedStatus && !isCancelledStatus && (
                             <button
                                 onClick={handleReturn}
                                 disabled={returning}
-                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600 cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {returning ? "Processing…" : "Return invoice"}
+                                {returning ? "Processing…" : "Return Invoice"}
                             </button>
                         )}
 
@@ -167,7 +240,7 @@ export default function SaleDetail() {
                             onClick={handlePrint}
                             className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-[#4338CA] text-white hover:bg-[#3730A3] cursor-pointer transition shadow-sm"
                         >
-                            🖨️ Print
+                            🖨️ Print A4
                         </button>
 
                         <button
@@ -188,6 +261,9 @@ export default function SaleDetail() {
                         <div>
                             <p className="font-medium text-[14px]">{sale.customer.name}</p>
                             <p className="text-[13px] text-black/40 font-mono">{sale.customer.phone}</p>
+                            {sale.customer.address && (
+                                <p className="text-[12px] text-black/30">{sale.customer.address}</p>
+                            )}
                         </div>
                     </div>
                 )}
@@ -270,7 +346,7 @@ export default function SaleDetail() {
                     </div>
                 </div>
 
-                {/* ✅ UPDATED: PAYMENT HISTORY - Shows SalePayments */}
+                {/* PAYMENT HISTORY */}
                 {hasPayments && (
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-black/5">
                         <div className="flex justify-between items-center mb-2">
@@ -302,7 +378,6 @@ export default function SaleDetail() {
                             ))}
                         </div>
 
-                        {/* Total payments summary */}
                         <div className="mt-3 pt-3 border-t border-black/10 flex justify-between text-[12px]">
                             <span className="text-black/40">Total Paid</span>
                             <span className="font-mono font-semibold">
@@ -312,7 +387,7 @@ export default function SaleDetail() {
                     </div>
                 )}
 
-                {/* ✅ NEW: Credit Payments section (separate from SalePayments) */}
+                {/* CREDIT PAYMENTS */}
                 {sale.creditPayments && sale.creditPayments.length > 0 && (
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-black/5">
                         <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase mb-2">
@@ -333,8 +408,6 @@ export default function SaleDetail() {
                         </div>
                     </div>
                 )}
-
-
 
             </div>
         </div>

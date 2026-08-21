@@ -37,31 +37,51 @@ export default function Sales() {
     return matchSearch && matchDate;
   });
 
-  const isReturned = (status: any) =>
-    status === 1 || status === "Returned";
+  // ✅ Status helper functions
+  const isCancelled = (status: any) => status === 4 || status === "Cancelled";
+  const isReturned = (status: any) => status === 2 || status === "Returned" || status === "FULLY_RETURNED";
+  const isCompleted = (status: any) => status === 3 || status === "Completed";
 
+  // ✅ Get payment status based on status field
   const getPaymentStatus = (s: any) => {
-    // 1. Check if fully returned first (Overrides everything else)
+    // 1. Check if Cancelled (status = 4) - Highest priority
+    if (isCancelled(s.status)) return "Cancelled";
+
+    // 2. Check if Returned (status = 2)
     if (isReturned(s.status)) return "Returned";
 
-    // 2. Check if partially paid
-    if (s.balanceAmount > 0 && s.paidAmount > 0) return "Partial";
+    // 3. Check if Completed (status = 3)
+    if (isCompleted(s.status)) return "Completed";
 
-    // 3. If balance is 0, paidAmount is 0, AND HasReturns is true -> Fully Refunded
-    if (s.hasReturns && s.paidAmount === 0 && s.balanceAmount === 0) return "Refunded";
+    // 4. Check if partially paid (status = 1 or balance > 0 and paid > 0)
+    if (s.status === 1 || (s.balanceAmount > 0 && s.paidAmount > 0)) return "Partial";
 
-    // 4. If paidAmount is 0 and no return happened
-    if (s.paidAmount === 0) return "Unpaid";
+    // 5. Check if fully paid (balance is 0)
+    if (s.balanceAmount === 0) return "Paid";
 
-    return "Paid";
+    // 6. Default: Unpaid (status = 0)
+    return "Unpaid";
   };
 
+  // ✅ Status color based on status field
   const statusColor = (s: any) => {
-    if (isReturned(s.status)) return "bg-red-50 text-red-600";
-    if (s.hasReturns && s.paidAmount === 0 && s.balanceAmount === 0) return "bg-purple-50 text-purple-600"; // Refunded
-    if (s.balanceAmount > 0) return "bg-amber-50 text-amber-700";
-    return "bg-emerald-50 text-[#0B6E4F]";
+    if (isCancelled(s.status)) return "bg-gray-100 text-gray-600"; // Cancelled
+    if (isReturned(s.status)) return "bg-red-50 text-red-600"; // Returned
+    if (isCompleted(s.status)) return "bg-emerald-50 text-[#0B6E4F]"; // Completed
+    if (s.status === 1 || (s.balanceAmount > 0 && s.paidAmount > 0)) return "bg-amber-50 text-amber-700"; // Partial
+    if (s.balanceAmount === 0) return "bg-emerald-50 text-[#0B6E4F]"; // Paid
+    return "bg-red-50 text-red-600"; // Unpaid
   };
+
+  // ✅ Status label mapping
+  // const getStatusLabel = (s: any) => {
+  //   if (isCancelled(s.status)) return "Cancelled";
+  //   if (isReturned(s.status)) return "Returned";
+  //   if (isCompleted(s.status)) return "Completed";
+  //   if (s.status === 1 || (s.balanceAmount > 0 && s.paidAmount > 0)) return "Partial";
+  //   if (s.balanceAmount === 0) return "Paid";
+  //   return "Unpaid";
+  // };
 
   if (loading) {
     return (
@@ -147,11 +167,24 @@ export default function Sales() {
                     <span className={`text-[11px] font-semibold tracking-wide px-2 py-1 rounded-full ${statusColor(s)}`}>
                       {getPaymentStatus(s)}
                     </span>
+
+                    {isCancelled(s.status) && (
+                      <span className="text-[11px] font-semibold tracking-wide px-2 py-1 rounded-full bg-red-50 text-red-600">
+                        ⚠️ Cancelled
+                      </span>
+                    )}
                   </p>
 
                   <p className="text-[13px] text-black/40 mt-1">
                     {new Date(s.createdAt).toLocaleString()}
                   </p>
+
+                  {/* ✅ Show payment mode badge */}
+                  {s.paymentMode && (
+                    <span className="text-[10px] font-mono bg-gray-100 px-2 py-0.5 rounded-full text-gray-600 mt-1 inline-block">
+                      {s.paymentMode?.toUpperCase() || 'CASH'}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
@@ -160,6 +193,11 @@ export default function Sales() {
                     <p className="text-[13px] text-black/40">
                       {s.itemsCount} items
                     </p>
+                    {s.balanceAmount > 0 && s.balanceAmount !== s.totalAmount && (
+                      <p className="text-[11px] text-red-500 font-mono">
+                        Balance: Rs {s.balanceAmount}
+                      </p>
+                    )}
                   </div>
                   <ChevronRight className="w-4 h-4 text-black/20" />
                 </div>

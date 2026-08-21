@@ -37,6 +37,7 @@ export const getPurchases = async (): Promise<Purchase[]> => {
         grandTotal: Number(p.GrandTotal ?? 0),
 
         supplierId: p.SupplierId,
+        status: p.Status !== undefined ? p.Status : 0,
 
         balanceAmount: Number(p.BalanceAmount ?? 0),
 
@@ -81,7 +82,7 @@ export const getPurchaseById = async (id: string) => {
 
         balanceAmount: Number(p.BalanceAmount ?? 0),
 
-
+        status: p.Status !== undefined ? p.Status : 0,
 
         supplier: p.supplier
             ? {
@@ -111,4 +112,19 @@ export const getPurchaseById = async (id: string) => {
 
     };
 
+};
+
+export const cancelPurchase = async (id: string, reason?: string) => {
+    const res = await api.delete(`/purchases/cancel/${id}`, {
+        data: { reason },
+    });
+    return res.data;
+};
+
+// ✅ Cancel purchase by invoice number
+export const cancelPurchaseByInvoice = async (invoiceNumber: string, reason?: string) => {
+    const res = await api.delete(`/purchases/cancel/invoice/${invoiceNumber}`, {
+        data: { reason },
+    });
+    return res.data;
 };

@@ -62,10 +62,11 @@ export default function AppRoutes() {
         <Route path="credit-customers/:id" element={<CustomerCreditDetails />} />
 
         {/* PURCHASES */}
+         <Route path="purchases/:id" element={<PurchaseDetails />} />
+
         <Route path="purchases" element={<Purchases />} />
         <Route path="purchases-list" element={<PurchaseList />} />
-        <Route path="purchases/:id" element={<PurchaseDetails />} />
-
+       
         {/* EXPENSES */}
         <Route path="expenses" element={<Expenses />} />
 
