@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import {
     getCreditCustomers,
     createCustomer,
+    updateCustomer,
+    deleteCustomer,
 } from "../api/customerApi";
 
 interface CustomerCredit {
@@ -19,6 +21,7 @@ interface CustomerCredit {
     creditLimit: number;
     creditBalance: number;
     availableCredit: number;
+    postalCode : string;
     isActive: boolean;
     isBlocked: boolean;
     totalPurchases: number;
@@ -37,8 +40,9 @@ export default function CreditCustomers() {
     const [search, setSearch] = useState("");
     const [showModal, setShowModal] = useState(false);
     const [showFilterModal, setShowFilterModal] = useState(false);
+    const [editingCustomer, setEditingCustomer] = useState<CustomerCredit | null>(null);
 
-    // Form state for creating customer
+    // Form state for creating/editing customer
     const [formData, setFormData] = useState({
         name: "",
         phone: "",
@@ -47,8 +51,8 @@ export default function CreditCustomers() {
         deliveryAddress: "",
         billingAddress: "",
         city: "",
-        state: "",
-        postalCode: "",
+        state: "jaffna",
+        postalCode: "40000",
         country: "Srilanka",
         alternativePhone: "",
         companyName: "",
@@ -125,32 +129,107 @@ export default function CreditCustomers() {
         0
     );
 
-    const handleCreateCustomer = async () => {
+    // ✅ Open create modal
+    const openCreateModal = () => {
+        setEditingCustomer(null);
+        setFormData({
+            name: "",
+            phone: "",
+            email: "",
+            address: "",
+            deliveryAddress: "",
+            billingAddress: "",
+            city: "",
+            state: "jaffna",
+            postalCode: "40000",
+            country: "Srilanka",
+            alternativePhone: "",
+            companyName: "",
+            taxNumber: "",
+            customerType: "RETAIL",
+            creditLimit: 0,
+            paymentTerms: "Due on receipt",
+            notes: "",
+        });
+        setShowModal(true);
+    };
+
+    // ✅ Open edit modal
+    const openEditModal = (customer: CustomerCredit) => {
+        setEditingCustomer(customer);
+        setFormData({
+            name: customer.name || "",
+            phone: customer.phone || "",
+            email: customer.email || "",
+            address: customer.address || "",
+            deliveryAddress: customer.address || "",
+            billingAddress: customer.address || "",
+            city: customer.city || "",
+            state: customer.state || "jaffna",
+            postalCode: customer.postalCode || "40000",
+            country: customer.country || "Srilanka",
+            alternativePhone: "",
+            companyName: customer.companyName || "",
+            taxNumber: "",
+            customerType: customer.customerType || "RETAIL",
+            creditLimit: customer.creditLimit || 0,
+            paymentTerms: "Due on receipt",
+            notes: "",
+        });
+        setShowModal(true);
+    };
+
+    // ✅ Handle create/update customer
+    const handleSaveCustomer = async () => {
         if (!formData.name.trim()) return alert("Customer name is required");
         if (!formData.phone.trim()) return alert("Phone number is required");
 
         try {
-            await createCustomer({
-                name: formData.name,
-                phone: formData.phone,
-                email: formData.email || undefined,
-                address: formData.address || undefined,
-                deliveryAddress: formData.deliveryAddress || undefined,
-                billingAddress: formData.billingAddress || undefined,
-                city: formData.city || undefined,
-                state: formData.state || undefined,
-                postalCode: formData.postalCode || undefined,
-                country: formData.country || "Bangladesh",
-                alternativePhone: formData.alternativePhone || undefined,
-                creditLimit: formData.creditLimit,
-                companyName: formData.companyName || undefined,
-                taxNumber: formData.taxNumber || undefined,
-                customerType: formData.customerType || "RETAIL",
-                paymentTerms: formData.paymentTerms || "Due on receipt",
-                notes: formData.notes || undefined,
-            });
-
-            alert("Customer created successfully");
+            if (editingCustomer) {
+                // Update existing customer
+                await updateCustomer(editingCustomer.id, {
+                    name: formData.name,
+                    phone: formData.phone,
+                    email: formData.email || undefined,
+                    address: formData.address || undefined,
+                    deliveryAddress: formData.deliveryAddress || undefined,
+                    billingAddress: formData.billingAddress || undefined,
+                    city: formData.city || undefined,
+                    state: formData.state || undefined,
+                    postalCode: formData.postalCode || undefined,
+                    country: formData.country || "Srilanka",
+                    alternativePhone: formData.alternativePhone || undefined,
+                    creditLimit: formData.creditLimit,
+                    companyName: formData.companyName || undefined,
+                    taxNumber: formData.taxNumber || undefined,
+                    customerType: formData.customerType || "RETAIL",
+                    paymentTerms: formData.paymentTerms || "Due on receipt",
+                    notes: formData.notes || undefined,
+                });
+                alert("Customer updated successfully");
+            } else {
+                // Create new customer
+                await createCustomer({
+                    name: formData.name,
+                    phone: formData.phone,
+                    email: formData.email || undefined,
+                    address: formData.address || undefined,
+                    deliveryAddress: formData.deliveryAddress || undefined,
+                    billingAddress: formData.billingAddress || undefined,
+                    city: formData.city || undefined,
+                    state: formData.state || undefined,
+                    postalCode: formData.postalCode || undefined,
+                    country: formData.country || "Srilanka",
+                    alternativePhone: formData.alternativePhone || undefined,
+                    creditLimit: formData.creditLimit,
+                    companyName: formData.companyName || undefined,
+                    taxNumber: formData.taxNumber || undefined,
+                    customerType: formData.customerType || "RETAIL",
+                    paymentTerms: formData.paymentTerms || "Due on receipt",
+                    notes: formData.notes || undefined,
+                });
+                alert("Customer created successfully");
+            }
 
             // Reset form
             setFormData({
@@ -161,9 +240,9 @@ export default function CreditCustomers() {
                 deliveryAddress: "",
                 billingAddress: "",
                 city: "",
-                state: "",
-                postalCode: "",
-                country: "srilanka",
+                state: "jaffna",
+                postalCode: "40000",
+                country: "Srilanka",
                 alternativePhone: "",
                 companyName: "",
                 taxNumber: "",
@@ -173,6 +252,7 @@ export default function CreditCustomers() {
                 notes: "",
             });
 
+            setEditingCustomer(null);
             setShowModal(false);
             await load();
         } catch (error: any) {
@@ -180,7 +260,24 @@ export default function CreditCustomers() {
                 error?.response?.data?.message ||
                 error?.response?.data ||
                 error?.message ||
-                "Failed to create customer"
+                (editingCustomer ? "Failed to update customer" : "Failed to create customer")
+            );
+        }
+    };
+
+    // ✅ Handle delete customer
+    const handleDeleteCustomer = async (customer: CustomerCredit) => {
+        if (!confirm(`Are you sure you want to delete ${customer.name}?`)) return;
+
+        try {
+            await deleteCustomer(customer.id);
+            alert("Customer deleted successfully");
+            await load();
+        } catch (error: any) {
+            alert(
+                error?.response?.data?.message ||
+                error?.message ||
+                "Failed to delete customer"
             );
         }
     };
@@ -225,47 +322,46 @@ export default function CreditCustomers() {
     }
 
     return (
-        <div className="space-y-5">
-
+        <div className="space-y-5 px-2 sm:px-0">
             {/* HEADER */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-[#14181C]">
+                    <h1 className="text-xl sm:text-2xl font-bold text-[#14181C]">
                         Credit customers
                     </h1>
-                    <p className="text-[13px] text-black/40 mt-0.5">
+                    <p className="text-[12px] sm:text-[13px] text-black/40 mt-0.5">
                         Manage customer credit balances and profiles
                     </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     <button
                         onClick={() => setShowFilterModal(true)}
-                        className="bg-white border border-black/10 hover:bg-black/5 text-black/70 px-4 py-2.5 rounded-xl font-medium text-[14px] cursor-pointer transition shadow-sm inline-flex items-center gap-1.5 justify-center"
+                        className="bg-white border border-black/10 hover:bg-black/5 text-black/70 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-medium text-[13px] sm:text-[14px] cursor-pointer transition shadow-sm inline-flex items-center gap-1.5 justify-center flex-1 sm:flex-none"
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                             <path d="M3 6h18M5 12h14M8 18h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
-                        Filter
+                        <span className="hidden sm:inline">Filter</span>
                     </button>
 
                     <button
-                        onClick={() => setShowModal(true)}
-                        className="bg-[#0B6E4F] hover:bg-[#0A5F44] text-white px-4 py-2.5 rounded-xl font-medium text-[14px] cursor-pointer transition shadow-sm inline-flex items-center gap-1.5 justify-center"
+                        onClick={openCreateModal}
+                        className="bg-[#0B6E4F] hover:bg-[#0A5F44] text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-medium text-[13px] sm:text-[14px] cursor-pointer transition shadow-sm inline-flex items-center gap-1.5 justify-center flex-1 sm:flex-none"
                     >
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
-                        Add customer
+                        <span className="hidden sm:inline">Add customer</span>
                     </button>
                 </div>
             </div>
 
             {/* TOGGLE VIEW */}
-            <div className="flex bg-white border border-black/5 rounded-xl p-1 w-full md:w-fit shadow-sm">
+            <div className="flex bg-white border border-black/5 rounded-xl p-1 w-full shadow-sm overflow-x-auto">
                 <button
                     onClick={() => setView("all")}
-                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[14px] font-medium cursor-pointer transition ${view === "all"
+                    className={`flex-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[12px] sm:text-[14px] font-medium cursor-pointer transition whitespace-nowrap ${view === "all"
                         ? "bg-[#14181C] text-white shadow-sm"
                         : "text-black/50 hover:text-black/70"
                         }`}
@@ -275,7 +371,7 @@ export default function CreditCustomers() {
 
                 <button
                     onClick={() => setView("credit")}
-                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[14px] font-medium cursor-pointer transition ${view === "credit"
+                    className={`flex-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[12px] sm:text-[14px] font-medium cursor-pointer transition whitespace-nowrap ${view === "credit"
                         ? "bg-red-600 text-white shadow-sm"
                         : "text-black/50 hover:text-black/70"
                         }`}
@@ -285,7 +381,7 @@ export default function CreditCustomers() {
 
                 <button
                     onClick={() => setView("blocked")}
-                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[14px] font-medium cursor-pointer transition ${view === "blocked"
+                    className={`flex-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[12px] sm:text-[14px] font-medium cursor-pointer transition whitespace-nowrap ${view === "blocked"
                         ? "bg-gray-800 text-white shadow-sm"
                         : "text-black/50 hover:text-black/70"
                         }`}
@@ -295,42 +391,42 @@ export default function CreditCustomers() {
             </div>
 
             {/* SUMMARY CARDS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                    <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-3 sm:p-4">
+                    <p className="text-[10px] sm:text-[11px] font-semibold tracking-widest text-black/40 uppercase">
                         {view === "credit" ? "Outstanding" : "Total customers"}
                     </p>
-                    <p className="text-2xl font-bold mt-1 font-mono tabular-nums">
+                    <p className="text-xl sm:text-2xl font-bold mt-1 font-mono tabular-nums">
                         {view === "credit" ? customersWithOutstanding : totalCustomers}
                     </p>
-                    <p className="text-[11px] text-black/30 mt-1">
+                    <p className="text-[10px] sm:text-[11px] text-black/30 mt-1">
                         {activeCustomers} active
                     </p>
                 </div>
 
-                <div className="bg-[#12171A] rounded-2xl p-4 shadow-sm">
-                    <p className="text-[11px] font-semibold tracking-widest text-white/40 uppercase">
+                <div className="bg-[#12171A] rounded-2xl p-3 sm:p-4 shadow-sm">
+                    <p className="text-[10px] sm:text-[11px] font-semibold tracking-widest text-white/40 uppercase">
                         Outstanding balance
                     </p>
-                    <p className="text-2xl font-bold mt-1 font-mono tabular-nums text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]">
+                    <p className="text-xl sm:text-2xl font-bold mt-1 font-mono tabular-nums text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]">
                         Rs {totalOutstanding.toLocaleString()}
                     </p>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                    <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
+                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-3 sm:p-4">
+                    <p className="text-[10px] sm:text-[11px] font-semibold tracking-widest text-black/40 uppercase">
                         Total credit limit
                     </p>
-                    <p className="text-2xl font-bold mt-1 font-mono tabular-nums text-[#0B6E4F]">
+                    <p className="text-xl sm:text-2xl font-bold mt-1 font-mono tabular-nums text-[#0B6E4F]">
                         Rs {totalCreditLimit.toLocaleString()}
                     </p>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                    <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
+                <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-3 sm:p-4">
+                    <p className="text-[10px] sm:text-[11px] font-semibold tracking-widest text-black/40 uppercase">
                         Avg. credit usage
                     </p>
-                    <p className="text-2xl font-bold mt-1 font-mono tabular-nums">
+                    <p className="text-xl sm:text-2xl font-bold mt-1 font-mono tabular-nums">
                         {totalCustomers > 0 && totalCreditLimit > 0
                             ? Math.round((totalOutstanding / totalCreditLimit) * 100)
                             : 0}%
@@ -340,7 +436,7 @@ export default function CreditCustomers() {
 
             {/* SEARCH */}
             <div className="relative">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" className="absolute left-4 top-1/2 -translate-y-1/2 text-black/30">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-black/30">
                     <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                     <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
@@ -348,12 +444,12 @@ export default function CreditCustomers() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search by name, phone, email, or company…"
-                    className="w-full border border-black/10 bg-white rounded-xl p-3 pl-11 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition shadow-sm"
+                    className="w-full border border-black/10 bg-white rounded-xl p-2.5 sm:p-3 pl-9 sm:pl-11 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition shadow-sm"
                 />
                 {search && (
                     <button
                         onClick={() => setSearch("")}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-black/30 hover:text-black/60"
+                        className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-black/30 hover:text-black/60"
                     >
                         ✕
                     </button>
@@ -363,7 +459,7 @@ export default function CreditCustomers() {
             {/* LIST */}
             <div className="grid gap-3">
                 {filteredCustomers.length === 0 && (
-                    <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-10 text-center text-black/30 text-sm">
+                    <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-8 sm:p-10 text-center text-black/30 text-sm">
                         {search ? "No customers match your search" : "No customers found"}
                     </div>
                 )}
@@ -371,85 +467,101 @@ export default function CreditCustomers() {
                 {filteredCustomers.map((c) => (
                     <div
                         key={c.id}
-                        onClick={() =>
-                            navigate(`/credit-customers/${c.id}`)
-                        }
-                        className={`bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:shadow-md hover:border-black/10 transition ${c.isBlocked ? "border-red-200 bg-red-50/30" : "border-black/5"
+                        className={`bg-white p-3 sm:p-4 rounded-2xl shadow-sm border ${c.isBlocked ? "border-red-200 bg-red-50/30" : "border-black/5"
                             }`}
                     >
-                        <div className="flex flex-col md:flex-row md:items-center gap-3">
+                        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
 
                             {/* NAME & INFO */}
-                            <div className="flex-1 flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-[#F3F6F4] flex items-center justify-center text-[#4338CA] font-semibold text-sm shrink-0">
+                            <div 
+                                className="flex-1 flex items-center gap-3 min-w-0 cursor-pointer"
+                                onClick={() => navigate(`/credit-customers/${c.id}`)}
+                            >
+                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#F3F6F4] flex items-center justify-center text-[#4338CA] font-semibold text-xs sm:text-sm shrink-0">
                                     {(c.name || "?").charAt(0).toUpperCase()}
                                 </div>
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="font-semibold text-[15px] text-[#14181C]">
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                        <p className="font-semibold text-[14px] sm:text-[15px] text-[#14181C] truncate max-w-[120px] sm:max-w-[160px] md:max-w-[200px]">
                                             {c.name}
                                         </p>
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getCustomerTypeBadgeColor(c.customerType)}`}>
+                                        <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium ${getCustomerTypeBadgeColor(c.customerType)}`}>
                                             {c.customerType}
                                         </span>
                                         {c.isBlocked && (
-                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                                            <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
                                                 BLOCKED
                                             </span>
                                         )}
                                         {!c.isActive && (
-                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
+                                            <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
                                                 INACTIVE
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex flex-wrap gap-2 text-[12px] text-black/40">
+                                    <div className="flex flex-wrap gap-1 sm:gap-2 text-[11px] sm:text-[12px] text-black/40 mt-0.5">
                                         <span className="font-mono">{c.phone}</span>
-                                        {c.email && <span>• {c.email}</span>}
-                                        {c.companyName && <span>• {c.companyName}</span>}
-                                        {c.city && <span>• {c.city}</span>}
+                                        {c.email && <span className="hidden xs:inline">• {c.email}</span>}
+                                        {c.companyName && <span className="hidden sm:inline">• {c.companyName}</span>}
+                                        {c.city && <span className="hidden md:inline">• {c.city}</span>}
                                     </div>
                                 </div>
                             </div>
 
                             {/* CREDIT INFO */}
-                            <div className="flex items-center gap-4 md:gap-6 flex-wrap">
-                                <div className="text-right">
-                                    <p className="text-[10px] text-black/30 uppercase tracking-wider font-semibold">
+                            <div className="flex items-center justify-between lg:justify-end gap-3 sm:gap-4 md:gap-6 flex-wrap w-full lg:w-auto border-t lg:border-t-0 pt-2 lg:pt-0">
+                                <div className="text-right flex-1 lg:flex-none">
+                                    <p className="text-[9px] sm:text-[10px] text-black/30 uppercase tracking-wider font-semibold">
                                         Balance
                                     </p>
-                                    <p className={`text-base font-bold font-mono tabular-nums ${c.totalBalance > 0 ? "text-red-600" : "text-[#0B6E4F]"
+                                    <p className={`text-sm sm:text-base font-bold font-mono tabular-nums ${c.totalBalance > 0 ? "text-red-600" : "text-[#0B6E4F]"
                                         }`}>
                                         Rs {c.totalBalance.toLocaleString()}
                                     </p>
                                 </div>
 
-                                <div className="text-right">
-                                    <p className="text-[10px] text-black/30 uppercase tracking-wider font-semibold">
+                                <div className="text-right flex-1 lg:flex-none">
+                                    <p className="text-[9px] sm:text-[10px] text-black/30 uppercase tracking-wider font-semibold">
                                         Credit Limit
                                     </p>
-                                    <p className="text-sm font-mono tabular-nums text-black/70">
+                                    <p className="text-xs sm:text-sm font-mono tabular-nums text-black/70">
                                         Rs {c.creditLimit.toLocaleString()}
                                     </p>
                                 </div>
 
-                                <div className="text-right">
-                                    <p className="text-[10px] text-black/30 uppercase tracking-wider font-semibold">
+                                <div className="text-right flex-1 lg:flex-none">
+                                    <p className="text-[9px] sm:text-[10px] text-black/30 uppercase tracking-wider font-semibold">
                                         Invoices
                                     </p>
-                                    <p className="text-sm font-mono tabular-nums text-black/70">
+                                    <p className="text-xs sm:text-sm font-mono tabular-nums text-black/70">
                                         {c.activeCreditSales} active
                                     </p>
                                 </div>
 
-                                <div className="text-right">
-                                    <p className="text-[10px] text-black/30 uppercase tracking-wider font-semibold">
+                                <div className="text-right flex-1 lg:flex-none">
+                                    <p className="text-[9px] sm:text-[10px] text-black/30 uppercase tracking-wider font-semibold">
                                         Loyalty
                                     </p>
-                                    <p className="text-sm font-mono tabular-nums text-black/70">
+                                    <p className="text-xs sm:text-sm font-mono tabular-nums text-black/70">
                                         {c.loyaltyPoints} pts
                                     </p>
                                 </div>
+                            </div>
+
+                            {/* ✅ ACTION BUTTONS */}
+                            <div className="flex gap-2 lg:flex-none w-full lg:w-auto pt-2 lg:pt-0 border-t lg:border-t-0">
+                                <button
+                                    onClick={() => openEditModal(c)}
+                                    className="flex-1 lg:flex-none px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-medium text-[12px] cursor-pointer transition"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteCustomer(c)}
+                                    className="flex-1 lg:flex-none px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium text-[12px] cursor-pointer transition"
+                                >
+                                    Delete
+                                </button>
                             </div>
 
                         </div>
@@ -457,14 +569,14 @@ export default function CreditCustomers() {
                 ))}
             </div>
 
-            {/* CREATE CUSTOMER MODAL */}
+            {/* CREATE/EDIT CUSTOMER MODAL */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50 overflow-y-auto">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
 
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-[#14181C]">
-                                Create customer
+                                {editingCustomer ? "Edit customer" : "Create customer"}
                             </h2>
                             <button
                                 onClick={() => setShowModal(false)}
@@ -474,9 +586,9 @@ export default function CreditCustomers() {
                             </button>
                         </div>
 
-                        <div className="grid md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                             {/* Personal Info */}
-                            <div className="space-y-3 md:col-span-2">
+                            <div className="space-y-3 sm:col-span-2">
                                 <h3 className="text-sm font-semibold text-black/60">Personal Information</h3>
                             </div>
 
@@ -489,7 +601,7 @@ export default function CreditCustomers() {
                                     value={formData.name}
                                     onChange={handleInputChange}
                                     placeholder="e.g. John Doe"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -502,7 +614,7 @@ export default function CreditCustomers() {
                                     value={formData.phone}
                                     onChange={handleInputChange}
                                     placeholder="+8801712345678"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -515,7 +627,7 @@ export default function CreditCustomers() {
                                     value={formData.email}
                                     onChange={handleInputChange}
                                     placeholder="john@example.com"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -528,7 +640,7 @@ export default function CreditCustomers() {
                                     value={formData.alternativePhone}
                                     onChange={handleInputChange}
                                     placeholder="+8801812345678"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -541,16 +653,16 @@ export default function CreditCustomers() {
                                     value={formData.companyName}
                                     onChange={handleInputChange}
                                     placeholder="ABC Corporation"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
                             {/* Address */}
-                            <div className="space-y-3 md:col-span-2">
+                            <div className="space-y-3 sm:col-span-2">
                                 <h3 className="text-sm font-semibold text-black/60">Address Information</h3>
                             </div>
 
-                            <div className="flex flex-col gap-1.5 md:col-span-2">
+                            <div className="flex flex-col gap-1.5 sm:col-span-2">
                                 <label className="text-[13px] text-black/60 font-medium">
                                     Address
                                 </label>
@@ -559,7 +671,7 @@ export default function CreditCustomers() {
                                     value={formData.address}
                                     onChange={handleInputChange}
                                     placeholder="123 Main Street"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -572,7 +684,7 @@ export default function CreditCustomers() {
                                     value={formData.city}
                                     onChange={handleInputChange}
                                     placeholder="jaffna"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -585,7 +697,7 @@ export default function CreditCustomers() {
                                     value={formData.state}
                                     onChange={handleInputChange}
                                     placeholder="jaffna"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -598,7 +710,7 @@ export default function CreditCustomers() {
                                     value={formData.postalCode}
                                     onChange={handleInputChange}
                                     placeholder="1212"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -611,12 +723,12 @@ export default function CreditCustomers() {
                                     value={formData.country}
                                     onChange={handleInputChange}
                                     placeholder="Srilanka"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
                             {/* Business Info */}
-                            <div className="space-y-3 md:col-span-2">
+                            <div className="space-y-3 sm:col-span-2">
                                 <h3 className="text-sm font-semibold text-black/60">Business Information</h3>
                             </div>
 
@@ -628,7 +740,7 @@ export default function CreditCustomers() {
                                     name="customerType"
                                     value={formData.customerType}
                                     onChange={handleInputChange}
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 >
                                     <option value="RETAIL">Retail</option>
                                     <option value="WHOLESALE">Wholesale</option>
@@ -648,7 +760,7 @@ export default function CreditCustomers() {
                                     value={formData.taxNumber}
                                     onChange={handleInputChange}
                                     placeholder="123456789012"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -671,7 +783,7 @@ export default function CreditCustomers() {
                                         }));
                                     }}
                                     placeholder="0.00"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
@@ -684,11 +796,11 @@ export default function CreditCustomers() {
                                     value={formData.paymentTerms}
                                     onChange={handleInputChange}
                                     placeholder="Net 30 days"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
 
-                            <div className="flex flex-col gap-1.5 md:col-span-2">
+                            <div className="flex flex-col gap-1.5 sm:col-span-2">
                                 <label className="text-[13px] text-black/60 font-medium">
                                     Notes
                                 </label>
@@ -698,24 +810,24 @@ export default function CreditCustomers() {
                                     onChange={handleInputChange}
                                     placeholder="Additional notes about the customer..."
                                     rows={2}
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition resize-none"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition resize-none"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-1 border-t border-black/5">
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-1 border-t border-black/5">
                             <button
                                 onClick={() => setShowModal(false)}
-                                className="px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] cursor-pointer transition"
+                                className="px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] cursor-pointer transition order-2 sm:order-1"
                             >
                                 Cancel
                             </button>
 
                             <button
-                                onClick={handleCreateCustomer}
-                                className="px-4 py-2.5 bg-[#0B6E4F] hover:bg-[#0A5F44] text-white rounded-xl font-medium text-[14px] cursor-pointer transition shadow-sm"
+                                onClick={handleSaveCustomer}
+                                className="px-4 py-2.5 bg-[#0B6E4F] hover:bg-[#0A5F44] text-white rounded-xl font-medium text-[14px] cursor-pointer transition shadow-sm order-1 sm:order-2"
                             >
-                                Create customer
+                                {editingCustomer ? "Update customer" : "Create customer"}
                             </button>
                         </div>
 
@@ -725,8 +837,8 @@ export default function CreditCustomers() {
 
             {/* FILTER MODAL */}
             {showFilterModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 z-50">
+                    <div className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md space-y-4 shadow-xl">
                         <h2 className="text-lg font-semibold text-[#14181C]">
                             Filter customers
                         </h2>
@@ -739,7 +851,7 @@ export default function CreditCustomers() {
                                 <select
                                     value={customerTypeFilter}
                                     onChange={(e) => setCustomerTypeFilter(e.target.value)}
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 >
                                     <option value="ALL">All types</option>
                                     <option value="RETAIL">Retail</option>
@@ -761,12 +873,12 @@ export default function CreditCustomers() {
                                     value={minCreditLimit}
                                     onChange={(e) => setMinCreditLimit(parseFloat(e.target.value) || 0)}
                                     placeholder="0"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-3 text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] rounded-xl p-2.5 sm:p-3 text-[13px] sm:text-[14px] font-mono outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-1">
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-1">
                             <button
                                 onClick={() => {
                                     setCustomerTypeFilter("ALL");

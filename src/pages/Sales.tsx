@@ -168,11 +168,11 @@ export default function Sales() {
                       {getPaymentStatus(s)}
                     </span>
 
-                    {isCancelled(s.status) && (
+                    {/* {isCancelled(s.status) && (
                       <span className="text-[11px] font-semibold tracking-wide px-2 py-1 rounded-full bg-red-50 text-red-600">
                         ⚠️ Cancelled
                       </span>
-                    )}
+                    )} */}
                   </p>
 
                   <p className="text-[13px] text-black/40 mt-1">

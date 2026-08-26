@@ -1,7 +1,7 @@
 // src/pages/sales/SaleDetail.tsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSaleById, returnSale, cancelSale } from "../api/salesApi";
+import { getSaleById, cancelSale } from "../api/salesApi";
 import { printA4Receipt, type ReceiptData } from "../utils/printA4Receipt";
 
 export default function SaleDetail() {
@@ -10,7 +10,7 @@ export default function SaleDetail() {
 
     const [sale, setSale] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [returning, setReturning] = useState(false);
+    // const [returning, setReturning] = useState(false);
 
     useEffect(() => {
         loadSale();
@@ -76,23 +76,23 @@ export default function SaleDetail() {
         }
     };
 
-    const handleReturn = async () => {
-        if (!sale || isReturned() || isCancelled()) return;
+    // const handleReturn = async () => {
+    //     if (!sale || isReturned() || isCancelled()) return;
 
-        const ok = confirm("Return this invoice?");
-        if (!ok) return;
+    //     const ok = confirm("Return this invoice?");
+    //     if (!ok) return;
 
-        try {
-            setReturning(true);
-            await returnSale(sale.invoiceNumber);
-            alert("Returned successfully");
-            await loadSale();
-        } catch (err: any) {
-            alert(err?.response?.data || "Failed");
-        } finally {
-            setReturning(false);
-        }
-    };
+    //     try {
+    //         setReturning(true);
+    //         await returnSale(sale.invoiceNumber);
+    //         alert("Returned successfully");
+    //         await loadSale();
+    //     } catch (err: any) {
+    //         alert(err?.response?.data || "Failed");
+    //     } finally {
+    //         setReturning(false);
+    //     }
+    // };
 
     const handlePrint = () => {
         if (!sale) return;
@@ -226,7 +226,7 @@ export default function SaleDetail() {
                         )}
 
                         {/* Show Return button only if not returned and not cancelled */}
-                        {!isReturnedStatus && !isCancelledStatus && (
+                        {/* {!isReturnedStatus && !isCancelledStatus && (
                             <button
                                 onClick={handleReturn}
                                 disabled={returning}
@@ -234,7 +234,7 @@ export default function SaleDetail() {
                             >
                                 {returning ? "Processing…" : "Return Invoice"}
                             </button>
-                        )}
+                        )} */}
 
                         <button
                             onClick={handlePrint}

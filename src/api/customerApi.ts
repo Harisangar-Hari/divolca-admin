@@ -230,21 +230,15 @@ export const updateCustomer = async (id: string, data: {
     postalCode?: string;
     country?: string;
     alternativePhone?: string;
-    creditLimit?: number | string;
+    creditLimit?: number;
     companyName?: string;
     taxNumber?: string;
     customerType?: string;
     paymentTerms?: string;
     notes?: string;
+    isActive?: boolean;
+    isBlocked?: boolean;
 }) => {
-    let creditLimitValue = 0;
-    if (data.creditLimit !== undefined && data.creditLimit !== null && data.creditLimit !== '') {
-        const parsed = typeof data.creditLimit === 'string'
-            ? parseFloat(data.creditLimit)
-            : data.creditLimit;
-        creditLimitValue = isNaN(parsed) ? 0 : parsed;
-    }
-
     const res = await api.put(`/customers/${id}`, {
         Name: data.name,
         Phone: data.phone,
@@ -257,26 +251,18 @@ export const updateCustomer = async (id: string, data: {
         PostalCode: data.postalCode,
         Country: data.country,
         AlternativePhone: data.alternativePhone,
-        CreditLimit: creditLimitValue,
+        CreditLimit: data.creditLimit,
         CompanyName: data.companyName,
         TaxNumber: data.taxNumber,
         CustomerType: data.customerType,
         PaymentTerms: data.paymentTerms,
         Notes: data.notes,
+        IsActive: data.isActive,
+        IsBlocked: data.isBlocked,
     });
-
-    return {
-        id: res.data.Id,
-        name: res.data.Name,
-        phone: res.data.Phone,
-        email: res.data.Email,
-        customerType: res.data.CustomerType,
-        creditLimit: Number(res.data.CreditLimit || 0),
-        updatedAt: res.data.UpdatedAt,
-    };
+    return res.data;
 };
-
-// =========================
+//===================
 // TOGGLE CUSTOMER STATUS
 // =========================
 export const toggleCustomerStatus = async (id: string) => {
@@ -299,4 +285,9 @@ export const toggleBlockCustomer = async (id: string, reason?: string) => {
         isBlocked: res.data.IsBlocked,
         blockReason: res.data.BlockReason,
     };
+};
+
+export const deleteCustomer = async (id: string) => {
+    const res = await api.delete(`/customers/${id}`);
+    return res.data;
 };

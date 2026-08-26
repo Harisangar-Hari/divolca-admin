@@ -153,6 +153,9 @@ export default function CustomerCreditDetails() {
         if (status === 4) {
             return { label: "Cancelled", color: "bg-gray-100 text-gray-800" };
         }
+        if (status === 2) {
+            return { label: "Cancelled", color: "bg-gray-100 text-gray-800" };
+        }
         // If balance is 0, it's fully paid regardless of status
         if (balanceAmount === 0) {
             return { label: "Paid", color: "bg-green-100 text-green-800" };
