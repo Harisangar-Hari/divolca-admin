@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "../../store/toastStore";
 import { getSalesReport, exportSalesToExcel } from "../../api/reportsApi";
+import { getCreditCustomers } from "../../api/customerApi";
 
 interface SaleItem {
     Id: string;
@@ -14,22 +15,32 @@ interface SaleItem {
     CreatedAt: string;
     CustomerName: string;
     CustomerPhone: string;
+    CustomerId?: string;
     TotalItems: number;
+}
+
+interface Customer {
+    id: string;
+    name: string;
+    phone: string;
 }
 
 export default function SalesReport() {
     const [data, setData] = useState<SaleItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [customers, setCustomers] = useState<Customer[]>([]);
     const [filters, setFilters] = useState({
         startDate: "",
         endDate: "",
         paymentMode: "",
+        customerId: "",
     });
     const [filteredData, setFilteredData] = useState<SaleItem[]>([]);
     const { showToast } = useToast();
 
     useEffect(() => {
         loadData();
+        loadCustomers();
     }, []);
 
     const loadData = async () => {
@@ -45,6 +56,15 @@ export default function SalesReport() {
         }
     };
 
+    const loadCustomers = async () => {
+        try {
+            const res = await getCreditCustomers();
+            setCustomers(res || []);
+        } catch (error) {
+            console.error("Failed to load customers:", error);
+        }
+    };
+
     const applyFilters = async () => {
         try {
             setLoading(true);
@@ -53,7 +73,14 @@ export default function SalesReport() {
                 endDate: filters.endDate || undefined,
                 paymentMode: filters.paymentMode || undefined,
             });
-            setFilteredData(res);
+            
+            // ✅ Filter by customer locally
+            let filtered = res;
+            if (filters.customerId) {
+                filtered = res.filter((item: SaleItem) => item.CustomerId === filters.customerId);
+            }
+            
+            setFilteredData(filtered);
         } catch (error) {
             showToast("Failed to apply filters", "error");
         } finally {
@@ -62,7 +89,7 @@ export default function SalesReport() {
     };
 
     const resetFilters = () => {
-        setFilters({ startDate: "", endDate: "", paymentMode: "" });
+        setFilters({ startDate: "", endDate: "", paymentMode: "", customerId: "" });
         setFilteredData(data);
     };
 
@@ -78,6 +105,9 @@ export default function SalesReport() {
             showToast("Failed to export Excel", "error");
         }
     };
+
+    // ✅ Get selected customer name for display
+    const selectedCustomer = customers.find(c => c.id === filters.customerId);
 
     const totalSales = filteredData.length;
     const totalAmount = filteredData.reduce((sum, item) => sum + Number(item.TotalAmount), 0);
@@ -110,9 +140,27 @@ export default function SalesReport() {
                 </div>
             </div>
 
+            {/* ✅ Customer Filter Badge */}
+            {selectedCustomer && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                    <span className="text-sm text-blue-700">
+                        Filtering by customer: <strong>{selectedCustomer.name}</strong> ({selectedCustomer.phone})
+                    </span>
+                    <button
+                        onClick={() => {
+                            setFilters({ ...filters, customerId: "" });
+                            applyFilters();
+                        }}
+                        className="ml-auto text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                        ✕ Clear
+                    </button>
+                </div>
+            )}
+
             {/* Filters */}
             <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     <div>
                         <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date</label>
                         <input
@@ -142,6 +190,21 @@ export default function SalesReport() {
                             <option value="cash">Cash</option>
                             <option value="card">Card</option>
                             <option value="credit">Credit</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Customer</label>
+                        <select
+                            value={filters.customerId}
+                            onChange={(e) => setFilters({ ...filters, customerId: e.target.value })}
+                            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition bg-white"
+                        >
+                            <option value="">All Customers</option>
+                            {customers.map((customer) => (
+                                <option key={customer.id} value={customer.id}>
+                                    {customer.name} ({customer.phone})
+                                </option>
+                            ))}
                         </select>
                     </div>
                     <div className="flex items-end gap-2">
@@ -182,6 +245,7 @@ export default function SalesReport() {
                             <tr>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Invoice</th>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Customer</th>
+                                <th className="px-4 py-3 text-left font-semibold text-gray-600">Phone</th>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
                                 <th className="px-4 py-3 text-right font-semibold text-gray-600">Total</th>
                                 <th className="px-4 py-3 text-right font-semibold text-gray-600">Paid</th>
@@ -192,24 +256,26 @@ export default function SalesReport() {
                         <tbody>
                             {filteredData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">No sales found</td>
+                                    <td colSpan={8} className="px-4 py-10 text-center text-gray-400">No sales found</td>
                                 </tr>
                             ) : (
                                 filteredData.map((item) => (
                                     <tr key={item.Id} className="border-b border-gray-100 hover:bg-gray-50 transition">
                                         <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.InvoiceNumber}</td>
                                         <td className="px-4 py-3 text-gray-800">{item.CustomerName}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.CustomerPhone || "-"}</td>
                                         <td className="px-4 py-3 text-gray-500">{new Date(item.CreatedAt).toLocaleDateString()}</td>
                                         <td className="px-4 py-3 text-right font-mono">LKR {Number(item.TotalAmount).toFixed(2)}</td>
                                         <td className="px-4 py-3 text-right font-mono text-green-600">LKR {Number(item.PaidAmount).toFixed(2)}</td>
                                         <td className="px-4 py-3 text-right font-mono text-red-600">LKR {Number(item.BalanceAmount).toFixed(2)}</td>
                                         <td className="px-4 py-3 text-center">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.PaymentMode === "credit"
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                item.PaymentMode === "credit"
                                                     ? "bg-purple-100 text-purple-800"
                                                     : item.PaymentMode === "cash"
                                                         ? "bg-green-100 text-green-800"
                                                         : "bg-blue-100 text-blue-800"
-                                                }`}>
+                                            }`}>
                                                 {item.PaymentMode.toUpperCase()}
                                             </span>
                                         </td>

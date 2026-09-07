@@ -1,16 +1,49 @@
 // src/pages/sales/SaleDetail.tsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSaleById, cancelSale } from "../api/salesApi";
+import { getSaleById, cancelSale, editSale, updateSaleItem, addSaleItem, removeSaleItem } from "../api/salesApi";
+import { getProducts } from "../api/productsApi";
 import { printA4Receipt, type ReceiptData } from "../utils/printA4Receipt";
+import { useToast } from "../store/toastStore";
+
+// interface SaleItem {
+//     id: string;
+//     saleItemId: string;
+//     productId: string;
+//     productName: string;
+//     quantity: number;
+//     unitPrice: number;
+//     discount: number;
+//     total: number;
+// }
+
 
 export default function SaleDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { showToast } = useToast();
 
     const [sale, setSale] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    // const [returning, setReturning] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editLoading, setEditLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [showSearchResults, setShowSearchResults] = useState(false);
+
+    const [editedItems, setEditedItems] = useState<{
+        [key: string]: {
+            quantity: number;
+            discount: number;
+            discountPercent?: number;
+        }
+    }>({});
+
+    const [editedInvoiceDiscount, setEditedInvoiceDiscount] = useState<number>(0);
+    const [isDiscountManuallySet, setIsDiscountManuallySet] = useState(false);
+
+    // ✅ Add state for edited date
+    const [editedDate, setEditedDate] = useState<string>("");
 
     useEffect(() => {
         loadSale();
@@ -21,21 +54,309 @@ export default function SaleDetail() {
 
         try {
             const data = await getSaleById(id);
-            console.log('Mapped sale data:', data);
+
             setSale(data);
+            setEditedItems({});
+
+            // ✅ Set the date from the sale data
+            if (data?.createdAt) {
+                const date = new Date(data.createdAt);
+                setEditedDate(date.toISOString().split('T')[0]);
+            }
+
+            const subTotal = data?.subTotal || 0;
+            const discountAmount = data?.invoiceDiscountAmount || 0;
+
+            if (!isDiscountManuallySet) {
+                const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+                setEditedInvoiceDiscount(discountPercentage);
+            }
         } catch (error) {
             console.error('Error loading sale:', error);
+            showToast("Failed to load sale", "error");
         } finally {
             setLoading(false);
         }
     };
 
-    // ✅ Status helper functions
+    const handleSearch = async (term: string) => {
+        setSearchTerm(term);
+        if (!term.trim()) {
+            setSearchResults([]);
+            setShowSearchResults(false);
+            return;
+        }
+        try {
+            const products = await getProducts();
+            const filtered = products.filter((p: any) =>
+                p.name.toLowerCase().includes(term.toLowerCase()) ||
+                p.barcode.includes(term)
+            );
+            setSearchResults(filtered);
+            setShowSearchResults(true);
+        } catch (error) {
+            console.error("Search failed:", error);
+            setSearchResults([]);
+            setShowSearchResults(false);
+        }
+    };
+
+    const handleAddItem = async (product: any) => {
+        if (!id) return;
+        try {
+            setEditLoading(true);
+            await addSaleItem(id, {
+                productId: product.id,
+                quantity: 1,
+                discount: 0,
+            });
+            showToast("Item added successfully", "success");
+            setSearchTerm("");
+            setSearchResults([]);
+            setShowSearchResults(false);
+            await loadSale();
+        } catch (error: any) {
+            showToast(error?.message || "Failed to add item", "error");
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
+    const startEditingItem = (itemId: string, currentQty: number, currentDiscount: number, unitPrice: number) => {
+        const discountPercent = unitPrice > 0 ? Math.round((currentDiscount / unitPrice) * 100) : 0;
+
+        setEditedItems(prev => ({
+            ...prev,
+            [itemId]: {
+                quantity: currentQty,
+                discount: currentDiscount,
+                discountPercent: discountPercent,
+            }
+        }));
+    };
+
+    const updateItemQuantity = (itemId: string, quantity: number) => {
+        setEditedItems(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                quantity: quantity,
+            }
+        }));
+    };
+
+    const updateDiscountFromPercent = (itemId: string, percent: number, unitPrice: number) => {
+        const discountAmount = (unitPrice * percent) / 100;
+        setEditedItems(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                discount: discountAmount,
+                discountPercent: percent,
+            }
+        }));
+    };
+
+    const handleUpdateItem = async (itemId: string) => {
+        if (!id) return;
+        const editData = editedItems[itemId];
+        if (!editData) {
+            showToast("No changes to save", "error");
+            return;
+        }
+
+        try {
+            setEditLoading(true);
+
+            await updateSaleItem(id, itemId, {
+                quantity: editData.quantity,
+                discount: editData.discount,
+            });
+
+            showToast("Item updated successfully", "success");
+
+            setEditedItems(prev => {
+                const newState = { ...prev };
+                delete newState[itemId];
+                return newState;
+            });
+            await loadSale();
+        } catch (error: any) {
+            console.error('❌ Update error:', error);
+            showToast(error?.response?.data?.message || "Failed to update item", "error");
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
+    const cancelEditingItem = (itemId: string) => {
+        setEditedItems(prev => {
+            const newState = { ...prev };
+            delete newState[itemId];
+            return newState;
+        });
+    };
+
+    const handleRemoveItem = async (itemId: string) => {
+        if (!confirm("Remove this item from the sale?")) return;
+        if (!id) return;
+        try {
+            setEditLoading(true);
+            await removeSaleItem(id, itemId);
+            showToast("Item removed successfully", "success");
+            setEditedItems(prev => {
+                const newState = { ...prev };
+                delete newState[itemId];
+                return newState;
+            });
+            await loadSale();
+        } catch (error: any) {
+            showToast(error?.message || "Failed to remove item", "error");
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
+    // ✅ Save invoice discount
+    const handleSaveInvoiceDiscount = async () => {
+        if (!id) return;
+
+        const subTotal = sale.subTotal || 0;
+        const discountPercentage = editedInvoiceDiscount;
+        const discountAmount = (subTotal * discountPercentage) / 100;
+
+        if (discountAmount === 0 && discountPercentage === 0) {
+            if (sale.invoiceDiscountAmount === 0) {
+                showToast("No changes to save", "info");
+                return;
+            }
+        }
+
+        try {
+            setEditLoading(true);
+            await editSale(id, {
+                invoiceDiscount: discountAmount,
+                customerId: sale.customer?.id || undefined,
+            });
+            showToast(`Invoice discount ${discountPercentage}% (Rs ${discountAmount.toFixed(2)}) applied successfully`, "success");
+            setIsDiscountManuallySet(true);
+            await loadSale();
+        } catch (error: any) {
+            showToast(error?.message || "Failed to update discount", "error");
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
+    // ✅ Handle discount input change
+    const handleDiscountChange = (val: number) => {
+        setEditedInvoiceDiscount(val);
+        setIsDiscountManuallySet(true);
+    };
+
+    // ✅ Save all edits - Intelligent discount handling
+    const handleSaveEdits = async () => {
+        if (!id) return;
+
+        const editingItemIds = Object.keys(editedItems);
+        if (editingItemIds.length > 0) {
+            showToast("Please save or cancel individual item edits first", "error");
+            return;
+        }
+
+        try {
+            setEditLoading(true);
+
+            const currentItems = (sale.items || []).map((item: any) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                discount: item.discount || 0,
+            }));
+
+            // Intelligent discount handling
+            let discountAmount = sale.invoiceDiscountAmount || 0;
+
+            if (isDiscountManuallySet) {
+                const subTotal = sale.subTotal || 0;
+                const discountPercentage = editedInvoiceDiscount;
+                discountAmount = Math.round((subTotal * discountPercentage) / 100 * 100) / 100;
+            } else {
+                discountAmount = sale.invoiceDiscountAmount || 0;
+            }
+
+            // ✅ Prepare update data with date
+            const updateData: any = {
+                items: currentItems,
+                invoiceDiscount: discountAmount,
+                paymentMode: sale.paymentMode || "cash",
+                customerId: sale.customer?.id || undefined,
+            };
+
+            // ✅ If date was changed, include it
+            if (editedDate && sale.createdAt) {
+                const currentDate = new Date(sale.createdAt);
+                const currentDateStr = currentDate.toISOString().split('T')[0];
+                if (editedDate !== currentDateStr) {
+                    updateData.createdAt = new Date(editedDate).toISOString();
+                }
+            }
+
+            await editSale(id, updateData);
+
+            showToast(`Invoice updated successfully`, "success");
+            setIsEditing(false);
+            setIsDiscountManuallySet(false);
+            await loadSale();
+        } catch (error: any) {
+            showToast(error?.message || "Failed to update invoice", "error");
+        } finally {
+            setEditLoading(false);
+        }
+    };
+
+    const startEditing = () => {
+        setIsEditing(true);
+        setEditedItems({});
+        const subTotal = sale?.subTotal || 0;
+        const discountAmount = sale?.invoiceDiscountAmount || 0;
+        const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+        setEditedInvoiceDiscount(discountPercentage);
+        setIsDiscountManuallySet(false);
+        setSearchTerm("");
+        setSearchResults([]);
+        setShowSearchResults(false);
+
+        // ✅ Set the date when entering edit mode
+        if (sale?.createdAt) {
+            const date = new Date(sale.createdAt);
+            setEditedDate(date.toISOString().split('T')[0]);
+        }
+    };
+
+    const cancelEditing = () => {
+        setIsEditing(false);
+        setEditedItems({});
+        const subTotal = sale?.subTotal || 0;
+        const discountAmount = sale?.invoiceDiscountAmount || 0;
+        const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+        setEditedInvoiceDiscount(discountPercentage);
+        setIsDiscountManuallySet(false);
+        setSearchTerm("");
+        setSearchResults([]);
+        setShowSearchResults(false);
+        // ✅ Reset date to original
+        if (sale?.createdAt) {
+            const date = new Date(sale.createdAt);
+            setEditedDate(date.toISOString().split('T')[0]);
+        }
+        loadSale();
+    };
+
+    // Status helper functions
     const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
     const isReturned = () => sale?.status === 2 || sale?.status === "Returned" || sale?.status === "FULLY_RETURNED";
     const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
 
-    // ✅ Get status based on status field
     const getStatus = () => {
         if (isCancelled()) return "Cancelled";
         if (isReturned()) return "Returned";
@@ -45,7 +366,6 @@ export default function SaleDetail() {
         return "Unpaid";
     };
 
-    // ✅ Get status color based on status field
     const getStatusColor = () => {
         if (isCancelled()) return "bg-gray-100 text-gray-600";
         if (isReturned()) return "bg-red-50 text-red-600";
@@ -67,32 +387,14 @@ export default function SaleDetail() {
         try {
             setLoading(true);
             await cancelSale(sale.id, reason || undefined);
-            alert("Sale cancelled successfully");
+            showToast("Sale cancelled successfully", "success");
             await loadSale();
         } catch (err: any) {
-            alert(err?.response?.data?.message || "Failed to cancel sale");
+            showToast(err?.response?.data?.message || "Failed to cancel sale", "error");
         } finally {
             setLoading(false);
         }
     };
-
-    // const handleReturn = async () => {
-    //     if (!sale || isReturned() || isCancelled()) return;
-
-    //     const ok = confirm("Return this invoice?");
-    //     if (!ok) return;
-
-    //     try {
-    //         setReturning(true);
-    //         await returnSale(sale.invoiceNumber);
-    //         alert("Returned successfully");
-    //         await loadSale();
-    //     } catch (err: any) {
-    //         alert(err?.response?.data || "Failed");
-    //     } finally {
-    //         setReturning(false);
-    //     }
-    // };
 
     const handlePrint = () => {
         if (!sale) return;
@@ -123,6 +425,7 @@ export default function SaleDetail() {
                 discountRs: item.discount || 0,
                 sku: item.sku || "",
             })),
+            createdAt: sale.createdAt || "",
             customerName: sale.customer?.name || "",
             customerPhone: sale.customer?.phone || "",
             customerAddress: customerAddress,
@@ -136,7 +439,6 @@ export default function SaleDetail() {
             previousOutstanding: previousOutstanding,
         };
 
-        console.log('Printing A4 receipt with data:', receiptData);
         printA4Receipt(receiptData);
     };
 
@@ -181,6 +483,8 @@ export default function SaleDetail() {
     const payments = sale.payments || [];
     const hasPayments = payments.length > 0;
 
+    const canEdit = !isCancelledStatus && !isReturnedStatus && sale.status !== 2 && sale.status !== 4;
+
     return (
         <div className="min-h-screen bg-[#EEF1EF] p-4 md:p-6 font-sans text-[#14181C]">
             <div className="max-w-3xl mx-auto space-y-5">
@@ -202,11 +506,43 @@ export default function SaleDetail() {
                                 ⚠️ Cancelled
                             </span>
                         )}
+                        {isEditing && (
+                            <span className="text-[10px] font-mono bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
+                                ✏️ Editing
+                            </span>
+                        )}
                     </div>
 
-                    <div className="flex gap-2">
-                        {/* Show Pay Credit button only if not returned, not cancelled, and has balance */}
-                        {!isReturnedStatus && !isCancelledStatus && sale.balanceAmount > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                        {canEdit && !isEditing && (
+                            <button
+                                onClick={startEditing}
+                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 cursor-pointer transition shadow-sm"
+                            >
+                                ✏️ Edit Invoice
+                            </button>
+                        )}
+
+                        {isEditing && (
+                            <>
+                                <button
+                                    onClick={handleSaveEdits}
+                                    disabled={editLoading || Object.keys(editedItems).length > 0}
+                                    className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 cursor-pointer transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {editLoading ? "Saving..." : "💾 Save Changes"}
+                                </button>
+                                <button
+                                    onClick={cancelEditing}
+                                    disabled={editLoading}
+                                    className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-gray-600 text-white hover:bg-gray-700 cursor-pointer transition shadow-sm disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                            </>
+                        )}
+
+                        {!isReturnedStatus && !isCancelledStatus && sale.balanceAmount > 0 && !isEditing && (
                             <button
                                 onClick={() => navigate(`/sales/${sale.id}/pay-credit`)}
                                 className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition"
@@ -215,8 +551,7 @@ export default function SaleDetail() {
                             </button>
                         )}
 
-                        {/* Show Cancel button only if not returned and not cancelled */}
-                        {!isReturnedStatus && !isCancelledStatus && (
+                        {!isReturnedStatus && !isCancelledStatus && !isEditing && (
                             <button
                                 onClick={handleCancel}
                                 className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 cursor-pointer transition shadow-sm"
@@ -224,17 +559,6 @@ export default function SaleDetail() {
                                 Cancel Invoice
                             </button>
                         )}
-
-                        {/* Show Return button only if not returned and not cancelled */}
-                        {/* {!isReturnedStatus && !isCancelledStatus && (
-                            <button
-                                onClick={handleReturn}
-                                disabled={returning}
-                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-orange-500 text-white hover:bg-orange-600 cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {returning ? "Processing…" : "Return Invoice"}
-                            </button>
-                        )} */}
 
                         <button
                             onClick={handlePrint}
@@ -268,41 +592,232 @@ export default function SaleDetail() {
                     </div>
                 )}
 
+                {/* INVOICE DISCOUNT & DATE */}
+                {isEditing && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 space-y-3">
+                        {/* Discount Section */}
+                        <div className="flex items-center gap-4 flex-wrap">
+                            <label className="text-[13px] font-medium text-black/60">Invoice Discount (%):</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={editedInvoiceDiscount}
+                                onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (!isNaN(val) && val >= 0 && val <= 100) {
+                                        handleDiscountChange(val);
+                                    }
+                                }}
+                                className="border border-gray-300 rounded-xl px-3 py-2 w-24 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                            />
+                            <span className="text-sm text-black/40">%</span>
+
+                            {editedInvoiceDiscount > 0 && (
+                                <span className="text-sm text-green-600">
+                                    = Rs {((sale.subTotal || 0) * editedInvoiceDiscount / 100).toFixed(2)}
+                                </span>
+                            )}
+
+                            <button
+                                onClick={handleSaveInvoiceDiscount}
+                                disabled={editLoading}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition disabled:opacity-50"
+                            >
+                                Update Discount
+                            </button>
+
+                            <span className="text-xs text-black/40">
+                                Current: {sale.invoiceDiscountAmount > 0
+                                    ? `${Math.round((sale.invoiceDiscountAmount / (sale.subTotal || 1)) * 100)}% (Rs ${sale.invoiceDiscountAmount || 0})`
+                                    : 'No discount'
+                                }
+                            </span>
+                        </div>
+
+                        {/* ✅ Date Section */}
+                        <div className="flex items-center gap-4 flex-wrap border-t border-black/5 pt-3">
+                            <label className="text-[13px] font-medium text-black/60">Invoice Date:</label>
+                            <input
+                                type="date"
+                                value={editedDate}
+                                onChange={(e) => setEditedDate(e.target.value)}
+                                className="border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                            />
+                            <span className="text-xs text-black/40">
+                                Original: {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString() : 'N/A'}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 {/* ITEMS */}
                 <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                    <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase mb-2">
-                        Items
-                    </p>
+                    <div className="flex justify-between items-center mb-2">
+                        <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
+                            Items {isEditing && "(Click edit to modify)"}
+                        </p>
+                        {isEditing && (
+                            <span className="text-[11px] text-blue-600">
+                                {sale.items?.length || 0} items
+                            </span>
+                        )}
+                    </div>
 
                     <div className="divide-y divide-dashed divide-black/10">
-                        {(sale.items ?? []).map((item: any, i: number) => {
+                        {(sale.items ?? []).map((item: any, index: number) => {
+                            const itemId = item.id || item.saleItemId;
+
                             const discount = Number(item.discount || 0);
                             const unitPrice = Number(item.unitPrice);
                             const qty = item.quantity;
                             const finalLineTotal = Number(item.total);
+                            const isEditingThisItem = editedItems[itemId] !== undefined;
+                            const editData = editedItems[itemId];
+
+                            const discountPercent = unitPrice > 0 ? Math.round((discount / unitPrice) * 100) : 0;
 
                             return (
-                                <div key={i} className="flex justify-between items-center py-3">
-                                    <div>
-                                        <p className="font-medium text-[14px]">
-                                            {item.productName || "Product"}
-                                        </p>
-                                        <div className="text-[13px] text-black/40 font-mono mt-0.5 space-y-0.5">
-                                            <p>{qty} × Rs {unitPrice.toFixed(2)}</p>
-                                            {discount > 0 && (
-                                                <p className="text-red-500 font-medium">
-                                                    (Disc: -Rs {discount.toFixed(2)} /each)
-                                                </p>
+                                <div key={itemId || index} className="py-3">
+                                    <div className="flex justify-between items-start gap-3">
+                                        <div className="flex-1">
+                                            <p className="font-medium text-[14px]">
+                                                {item.productName || "Product"}
+                                            </p>
+                                            <div className="text-[13px] text-black/40 font-mono mt-0.5">
+                                                {isEditingThisItem ? (
+                                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                        <label className="text-xs">Qty:</label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={editData?.quantity || qty}
+                                                            onChange={(e) => updateItemQuantity(itemId, Number(e.target.value))}
+                                                            className="w-16 border rounded px-2 py-1 text-sm"
+                                                        />
+
+                                                        <label className="text-xs ml-2">Disc %:</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            step="0.5"
+                                                            value={editData?.discountPercent || 0}
+                                                            onChange={(e) => {
+                                                                const percent = Number(e.target.value);
+                                                                if (!isNaN(percent) && percent >= 0 && percent <= 100) {
+                                                                    updateDiscountFromPercent(itemId, percent, unitPrice);
+                                                                }
+                                                            }}
+                                                            className="w-16 border rounded px-2 py-1 text-sm"
+                                                        />
+
+                                                        <span className="text-xs text-gray-400">
+                                                            = Rs {((unitPrice * (editData?.discountPercent || 0)) / 100).toFixed(2)}
+                                                        </span>
+
+                                                        <button
+                                                            onClick={() => handleUpdateItem(itemId)}
+                                                            disabled={editLoading}
+                                                            className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 disabled:opacity-50"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            onClick={() => cancelEditingItem(itemId)}
+                                                            className="text-xs bg-gray-300 px-2 py-1 rounded hover:bg-gray-400"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p>{qty} × Rs {unitPrice.toFixed(2)}</p>
+                                                        {discount > 0 && (
+                                                            <p className="text-red-500 font-medium">
+                                                                Disc: Rs {discount.toFixed(2)} /each ({discountPercent}%)
+                                                            </p>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-mono font-semibold text-[14px]">
+                                                Rs {finalLineTotal.toFixed(2)}
+                                            </div>
+                                            {isEditing && !isEditingThisItem && (
+                                                <div className="flex gap-1 mt-1 justify-end">
+                                                    <button
+                                                        onClick={() => {
+                                                            const correctId = item.id || item.saleItemId;
+                                                            startEditingItem(correctId, qty, discount, unitPrice);
+                                                        }}
+                                                        className="text-[10px] text-blue-600 hover:underline"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const correctId = item.id || item.saleItemId;
+                                                            handleRemoveItem(correctId);
+                                                        }}
+                                                        className="text-[10px] text-red-600 hover:underline"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
-                                    </div>
-                                    <div className="font-mono font-semibold text-[14px]">
-                                        Rs {finalLineTotal.toFixed(2)}
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
+
+                    {/* Add Item Section */}
+                    {isEditing && (
+                        <div className="mt-4 pt-4 border-t border-black/10">
+                            <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase mb-2">
+                                Add Item
+                            </p>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => handleSearch(e.target.value)}
+                                    placeholder="Search products to add..."
+                                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    onFocus={() => {
+                                        if (searchTerm.trim() && searchResults.length > 0) {
+                                            setShowSearchResults(true);
+                                        }
+                                    }}
+                                    onBlur={() => {
+                                        setTimeout(() => {
+                                            setShowSearchResults(false);
+                                        }, 200);
+                                    }}
+                                />
+                                {showSearchResults && searchResults.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-48 overflow-y-auto z-10">
+                                        {searchResults.map((product) => (
+                                            <div
+                                                key={product.id}
+                                                onClick={() => handleAddItem(product)}
+                                                className="px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 flex justify-between items-center"
+                                            >
+                                                <span>{product.name}</span>
+                                                <span className="text-sm font-mono text-[#0B6E4F]">
+                                                    Rs {product.price}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* PAYMENT SUMMARY */}
@@ -337,8 +852,8 @@ export default function SaleDetail() {
                         <p className="text-[11px] tracking-widest uppercase text-white/40 font-semibold">Balance</p>
                         <p
                             className={`mt-1 font-mono text-3xl font-semibold tabular-nums ${(sale.balanceAmount || 0) > 0
-                                ? "text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]"
-                                : "text-[#4ADE9A] [text-shadow:0_0_18px_rgba(74,222,154,0.35)]"
+                                    ? "text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]"
+                                    : "text-[#4ADE9A] [text-shadow:0_0_18px_rgba(74,222,154,0.35)]"
                                 }`}
                         >
                             Rs {(sale.balanceAmount || 0).toFixed(2)}

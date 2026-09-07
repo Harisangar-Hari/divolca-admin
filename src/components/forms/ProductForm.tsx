@@ -10,8 +10,8 @@ interface Props {
   categories: any[];
   brands: any[];
   setImageFile: (file: File | null) => void;
-  refreshCategories: () => void; // New prop to refresh list after adding
-  refreshBrands: () => void;     // New prop to refresh list after adding
+  refreshCategories: () => void;
+  refreshBrands: () => void;
 }
 
 function generateBarcode() {
@@ -39,6 +39,10 @@ export default function ProductForm({
   const [showAddBrand, setShowAddBrand] = useState(false);
   const [newBrandName, setNewBrandName] = useState("");
 
+  // ✅ Cost Price Calculation States
+  const [discount1Percent, setDiscount1Percent] = useState<number>(0);
+  const [discount2Percent, setDiscount2Percent] = useState<number>(0);
+
   useEffect(() => {
     if (!form.barcode) {
       setForm({
@@ -47,6 +51,26 @@ export default function ProductForm({
       });
     }
   }, []);
+
+  // ✅ Calculate cost price whenever selling price or discounts change
+  useEffect(() => {
+    const sellingPrice = Number(form.price) || 0;
+
+    // Apply first discount (percentage)
+    const priceAfterDiscount1 = sellingPrice - (sellingPrice * (discount1Percent / 100));
+
+    // Apply second discount (percentage) on the price after first discount
+    const finalCostPrice = priceAfterDiscount1 - (priceAfterDiscount1 * (discount2Percent / 100));
+
+    // Update cost price only if it's not manually overridden
+    // But only if the user hasn't manually typed in cost price
+    if (!form.manualCostPrice) {
+      setForm({
+        ...form,
+        costPrice: Math.round(finalCostPrice * 100) / 100, // Round to 2 decimal places
+      });
+    }
+  }, [form.price, discount1Percent, discount2Percent]);
 
   const handleOpenPrintModal = () => {
     if (!form.barcode) return;
@@ -70,14 +94,10 @@ export default function ProductForm({
     if (!newCategoryName.trim()) return;
     try {
       const newCat = await createCategory({ name: newCategoryName });
-      // Reset input and close
       setNewCategoryName("");
       setShowAddCategory(false);
-      // Refresh the parent's category list
       if (refreshCategories) refreshCategories();
 
-      // Auto-select the newly created category
-      // Prisma usually returns 'Id' and 'Name'. Adjust if your API returns 'id' and 'name'
       const newId = newCat.Id || newCat.id;
       setForm({ ...form, categoryId: newId });
     } catch (error) {
@@ -91,19 +111,42 @@ export default function ProductForm({
     if (!newBrandName.trim()) return;
     try {
       const newBrand = await createBrand({ name: newBrandName });
-      // Reset input and close
       setNewBrandName("");
       setShowAddBrand(false);
-      // Refresh the parent's brand list
       if (refreshBrands) refreshBrands();
 
-      // Auto-select the newly created brand
       const newId = newBrand.Id || newBrand.id;
       setForm({ ...form, brandId: newId });
     } catch (error) {
       console.error("Failed to add brand", error);
       alert("Failed to add brand.");
     }
+  };
+
+  // ✅ Handle manual cost price edit
+  const handleManualCostPrice = (value: number) => {
+    setForm({
+      ...form,
+      costPrice: value,
+      manualCostPrice: true, // Mark as manually edited
+    });
+  };
+
+  // ✅ Reset to auto-calculated mode
+  const resetToAutoCalculate = () => {
+    setForm({
+      ...form,
+      manualCostPrice: false,
+    });
+    // Trigger recalculation
+    const sellingPrice = Number(form.price) || 0;
+    const priceAfterDiscount1 = sellingPrice - (sellingPrice * (discount1Percent / 100));
+    const finalCostPrice = priceAfterDiscount1 - (priceAfterDiscount1 * (discount2Percent / 100));
+    setForm({
+      ...form,
+      costPrice: Math.round(finalCostPrice * 100) / 100,
+      manualCostPrice: false,
+    });
   };
 
   return (
@@ -179,38 +222,148 @@ export default function ProductForm({
         </div>
       </div>
 
-      {/* PRICING */}
+      {/* PRICING & COST CALCULATION */}
       <div className="space-y-3">
         <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
-          Pricing
+          Pricing & Cost Calculation
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Selling Price"
-            type="number"
-            placeholder="0.00"
-            value={form.price}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                price: Number(e.target.value),
-              })
-            }
-          />
+        {/* Selling Price */}
+        <Input
+          label="Selling Price"
+          type="number"
+          placeholder="0.00"
+          value={form.price}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              price: Number(e.target.value),
+              manualCostPrice: false, // Reset manual mode when selling price changes
+            })
+          }
+        />
 
-          <Input
-            label="Cost Price"
-            type="number"
-            placeholder="0.00"
-            value={form.costPrice}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                costPrice: Number(e.target.value),
-              })
-            }
-          />
+        {/* Discount 1 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[13px] text-black/60 font-medium block mb-1">
+              Discount 1 (%)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={discount1Percent || ""}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  setDiscount1Percent(Math.min(100, Math.max(0, val)));
+                  setForm({ ...form, manualCostPrice: false });
+                }}
+                className="flex-1 border border-black/10 bg-[#FAFAF8] p-2.5 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                placeholder="0"
+              />
+              <span className="text-sm text-black/40">%</span>
+            </div>
+            {discount1Percent > 0 && (
+              <p className="text-[11px] text-green-600 mt-0.5">
+                -Rs {(Number(form.price) * discount1Percent / 100).toFixed(2)}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[13px] text-black/60 font-medium block mb-1">
+              Discount 2 (%)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={discount2Percent || ""}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  setDiscount2Percent(Math.min(100, Math.max(0, val)));
+                  setForm({ ...form, manualCostPrice: false });
+                }}
+                className="flex-1 border border-black/10 bg-[#FAFAF8] p-2.5 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                placeholder="0"
+              />
+              <span className="text-sm text-black/40">%</span>
+            </div>
+            {discount2Percent > 0 && (
+              <p className="text-[11px] text-green-600 mt-0.5">
+                -Rs {(Number(form.price) * discount2Percent / 100).toFixed(2)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Cost Price - Auto-calculated with manual override */}
+        <div className="relative">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[13px] text-black/60 font-medium">
+              Cost Price
+            </label>
+            {form.manualCostPrice && (
+              <button
+                type="button"
+                onClick={resetToAutoCalculate}
+                className="text-[11px] text-blue-600 hover:underline"
+              >
+                ↻ Auto-calculate
+              </button>
+            )}
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.costPrice || ""}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val)) {
+                  handleManualCostPrice(val);
+                } else {
+                  handleManualCostPrice(0);
+                }
+              }}
+              className={`w-full border p-2.5 rounded-xl text-[14px] outline-none transition ${form.manualCostPrice
+                  ? "border-[#4338CA] bg-blue-50/20 focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA]"
+                  : "border-black/10 bg-[#FAFAF8] focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F]"
+                }`}
+              placeholder="Auto-calculated"
+            />
+            {!form.manualCostPrice && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                Auto
+              </span>
+            )}
+            {form.manualCostPrice && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                Manual
+              </span>
+            )}
+          </div>
+          {/* Show calculation breakdown */}
+          {!form.manualCostPrice && Number(form.price) > 0 && (discount1Percent > 0 || discount2Percent > 0) && (
+            <div className="text-[10px] text-black/40 mt-1 space-x-2">
+              <span>Selling Price: Rs {Number(form.price).toFixed(2)}</span>
+              {discount1Percent > 0 && (
+                <span>→ {discount1Percent}%: -Rs {(Number(form.price) * discount1Percent / 100).toFixed(2)}</span>
+              )}
+              {discount2Percent > 0 && (
+                <span>→ {discount2Percent}%: -Rs {(Number(form.price) * discount2Percent / 100).toFixed(2)}</span>
+              )}
+              <span className="font-semibold text-green-600">
+                = Rs {Number(form.costPrice).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -222,7 +375,7 @@ export default function ProductForm({
 
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Discount"
+            label="Product Discount"
             type="number"
             placeholder="0"
             value={form.discount}

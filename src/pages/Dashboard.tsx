@@ -57,6 +57,7 @@ export default function Dashboard() {
   const loadLowStock = async () => {
     const res = await getLowStockProducts();
     setLowStock(res); // ✅ IMPORTANT FIX
+    console.log("Low stock products:", res); // Log the low stock products to verify
   };
 
   if (loading) {
@@ -182,9 +183,9 @@ export default function Dashboard() {
             <div className="divide-y divide-dashed divide-black/10">
               {lowStock.map((p) => (
                 <div key={p.id} className="flex justify-between items-center py-2.5">
-                  <span className="text-[14px]">{p.name}</span>
+                  <span className="text-[14px]">{p.Name}</span>
                   <span className="text-red-600 font-mono font-semibold text-[13px]">
-                    {p.stockQty} left
+                    {p.StockQty} left
                   </span>
                 </div>
               ))}

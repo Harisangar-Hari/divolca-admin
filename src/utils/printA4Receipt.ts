@@ -1,110 +1,111 @@
 // src/utils/printA4Receipt.ts - Updated with payment mode
 
 export interface PrintItem {
-    name: string;
-    quantity: number;
-    price: number;
-    discountPercent?: number;
-    discountRs?: number;
-    sku?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  discountPercent?: number;
+  discountRs?: number;
+  sku?: string;
 }
 
 export interface ReceiptData {
-    invoiceNumber?: string;
-    items: PrintItem[];
-    customerName?: string;
-    customerPhone?: string;
-    customerAddress?: string;
-    total: number;
-    paid: number;
-    change?: number;
-    balance?: number;
-    paymentMode: "cash" | "credit" | "card";
-    invoiceDiscount?: number;
-    invoiceDiscountAmount?: number;
-    outstandingBalance?: number;
-    totalDue?: number;
-    previousOutstanding?: number;
+  invoiceNumber?: string;
+  createdAt?: string;
+  items: PrintItem[];
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  total: number;
+  paid: number;
+  change?: number;
+  balance?: number;
+  paymentMode: "cash" | "credit" | "card";
+  invoiceDiscount?: number;
+  invoiceDiscountAmount?: number;
+  outstandingBalance?: number;
+  totalDue?: number;
+  previousOutstanding?: number;
 }
 
 // Helper: Format currency with commas
 function fmt(num: number): string {
-    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 // Helper: Convert number to words (LKR)
 function numberToWords(num: number): string {
-    if (num === 0) return "Zero";
+  if (num === 0) return "Zero";
 
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-        'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-    const numToWords = (n: number): string => {
-        if (n < 20) return ones[n];
-        if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
-        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + numToWords(n % 100) : '');
-        if (n < 100000) return numToWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + numToWords(n % 1000) : '');
-        if (n < 10000000) return numToWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + numToWords(n % 100000) : '');
-        return numToWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + numToWords(n % 10000000) : '');
-    };
+  const numToWords = (n: number): string => {
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + numToWords(n % 100) : '');
+    if (n < 100000) return numToWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + numToWords(n % 1000) : '');
+    if (n < 10000000) return numToWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + numToWords(n % 100000) : '');
+    return numToWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + numToWords(n % 10000000) : '');
+  };
 
-    const rupees = Math.floor(num);
-    const cents = Math.round((num - rupees) * 100);
+  const rupees = Math.floor(num);
+  const cents = Math.round((num - rupees) * 100);
 
-    let result = numToWords(rupees) + ' Rupees';
-    if (cents > 0) {
-        result += ' and ' + numToWords(cents) + ' Cents';
-    }
-    return result;
+  let result = numToWords(rupees) + ' Rupees';
+  if (cents > 0) {
+    result += ' and ' + numToWords(cents) + ' Cents';
+  }
+  return result;
 }
 
 export async function printA4Receipt(data: ReceiptData): Promise<void> {
-    const now = new Date();
-    const dateStr = now.toISOString().split("T")[0];
+  // const now = new Date();
+  // const dateStr = now.toISOString().split("T")[0];
 
-    const previousOutstanding = data.previousOutstanding || 0;
-    const totalDue = previousOutstanding + (data.balance || 0);
+  const previousOutstanding = data.previousOutstanding || 0;
+  const totalDue = previousOutstanding + (data.balance || 0);
 
-    let totalItemDiscount = 0;
-    let grandTotalWithoutDiscount = 0;
+  let totalItemDiscount = 0;
+  let grandTotalWithoutDiscount = 0;
 
-    const MAX_ITEMS = 15;
-    const items = data.items.slice(0, MAX_ITEMS);
-    const hasMoreItems = data.items.length > MAX_ITEMS;
+  const MAX_ITEMS = 15;
+  const items = data.items.slice(0, MAX_ITEMS);
+  const hasMoreItems = data.items.length > MAX_ITEMS;
 
-    // ✅ Payment mode display
-    const paymentModeDisplay = {
-        cash: 'Cash',
-        card: 'Card',
-        credit: 'Credit'
-    }[data.paymentMode] || 'Cash';
+  // ✅ Payment mode display
+  const paymentModeDisplay = {
+    cash: 'Cash',
+    card: 'Card',
+    credit: 'Credit'
+  }[data.paymentMode] || 'Cash';
 
-    const rows = items.map((item, index) => {
-        const pctDisc = item.discountPercent || 0;
-        const rsDisc = item.discountRs || 0;
+  const rows = items.map((item, index) => {
+    const pctDisc = item.discountPercent || 0;
+    const rsDisc = item.discountRs || 0;
 
-        const originalPrice = item.price;
+    const originalPrice = item.price;
 
-        let discountAmount = 0;
-        if (pctDisc > 0) {
-            discountAmount = (originalPrice * pctDisc) / 100;
-        } else if (rsDisc > 0) {
-            discountAmount = rsDisc;
-        }
+    let discountAmount = 0;
+    if (pctDisc > 0) {
+      discountAmount = (originalPrice * pctDisc) / 100;
+    } else if (rsDisc > 0) {
+      discountAmount = rsDisc;
+    }
 
-        const discountedPrice = Math.max(0, originalPrice - discountAmount);
-        const lineFinalTotal = discountedPrice * item.quantity;
+    const discountedPrice = Math.max(0, originalPrice - discountAmount);
+    const lineFinalTotal = discountedPrice * item.quantity;
 
-        const totalDiscount = discountAmount * item.quantity;
-        totalItemDiscount += totalDiscount;
-        grandTotalWithoutDiscount += (originalPrice * item.quantity);
+    const totalDiscount = discountAmount * item.quantity;
+    totalItemDiscount += totalDiscount;
+    grandTotalWithoutDiscount += (originalPrice * item.quantity);
 
-        const discountDisplay = pctDisc > 0 ? `${pctDisc}%` : "0%";
+    const discountDisplay = pctDisc > 0 ? `${pctDisc}%` : "0%";
 
-        const qtyDisplay = item.quantity > 1 ? `${item.quantity} pcs` : `${item.quantity} pcs`;
+    const qtyDisplay = item.quantity > 1 ? `${item.quantity} pcs` : `${item.quantity} pcs`;
 
-        return `
+    return `
       <tr>
         <td class="sn">${index + 1}</td>
         <td class="desc">${item.name}</td>
@@ -114,9 +115,9 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
         <td class="amount">${fmt(lineFinalTotal)}</td>
       </tr>
     `;
-    }).join("");
+  }).join("");
 
-    const moreItemsRow = hasMoreItems ? `
+  const moreItemsRow = hasMoreItems ? `
     <tr>
       <td colspan="6" style="text-align: center; font-style: italic; color: #666; padding: 2px 0; font-size: 8pt;">
         ... and ${data.items.length - MAX_ITEMS} more items
@@ -124,21 +125,21 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
     </tr>
   ` : '';
 
-    // ✅ Get invoice discount
-    const invoiceDiscountAmount = data.invoiceDiscountAmount || 0;
-    const invoiceDiscountPercent = data.invoiceDiscount || 0;
+  // ✅ Get invoice discount
+  const invoiceDiscountAmount = data.invoiceDiscountAmount || 0;
+  const invoiceDiscountPercent = data.invoiceDiscount || 0;
 
-    // ✅ Calculate combined discount
-    const combinedDiscountAmount = totalItemDiscount + invoiceDiscountAmount;
+  // ✅ Calculate combined discount
+  const combinedDiscountAmount = totalItemDiscount + invoiceDiscountAmount;
 
-    // ✅ Check if there are any discounts
-    const hasItemDiscount = totalItemDiscount > 0;
-    const hasInvoiceDiscount = invoiceDiscountAmount > 0;
+  // ✅ Check if there are any discounts
+  const hasItemDiscount = totalItemDiscount > 0;
+  const hasInvoiceDiscount = invoiceDiscountAmount > 0;
 
-    const netTotal = grandTotalWithoutDiscount - combinedDiscountAmount;
-    const words = numberToWords(netTotal);
+  const netTotal = grandTotalWithoutDiscount - combinedDiscountAmount;
+  const words = numberToWords(netTotal);
 
-    const html = `
+  const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -657,7 +658,7 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
     <div class="customer-details" style="justify-content: space-between;">
       <div class="field">
         <span class="label">Date:</span>
-        <span>${dateStr}</span>
+        <span>${data.createdAt ? new Date(data.createdAt).toLocaleDateString("en-GB") : "N/A"}</span>
         
       </div>
       <div class="field">
@@ -832,12 +833,12 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
 </html>
   `;
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
 
-    const win = window.open(url, "_blank");
+  const win = window.open(url, "_blank");
 
-    if (win) {
-        win.document.title = `Invoice ${data.invoiceNumber || ''}`;
-    }
+  if (win) {
+    win.document.title = `Invoice ${data.invoiceNumber || ''}`;
+  }
 }
