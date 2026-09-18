@@ -2,8 +2,8 @@
 import axios from "axios";
 
 export const api = axios.create({
-  // baseURL: "https://divolca-backend.onrender.com/api",
-  baseURL: "http://localhost:3005/api",
+  baseURL: "https://divolca-backend.onrender.com/api",
+  // baseURL: "http://localhost:3005/api",
   withCredentials: true,
 });
 
@@ -22,7 +22,8 @@ let pendingQueue: Array<(token: string | null) => void> = [];
 
 // Bare axios instance for the refresh call — must NOT go through this interceptor
 const bareAxios = axios.create({
-  baseURL: "http://localhost:3005/api",
+  // baseURL: "http://localhost:3005/api",
+  baseURL: "https://divolca-backend.onrender.com/api",
   withCredentials: true,
 });
 
