@@ -1,3 +1,4 @@
+//src/api/categoriesApi.ts
 import { api } from "./axios";
 
 export const getCategories = async () => {

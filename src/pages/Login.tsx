@@ -1,3 +1,4 @@
+//src/pages/Login.tsx
 import { useState } from "react";
 import { loginApi } from "../api/authApi";
 import { useNavigate } from "react-router-dom";
@@ -18,7 +19,8 @@ export default function Login() {
 
             const res = await loginApi({ username, password });
 
-            localStorage.setItem("token", res.token);
+            localStorage.setItem("token", res.accessToken);
+            localStorage.setItem("user", JSON.stringify(res.user));
 
             navigate("/");
         } catch (err) {

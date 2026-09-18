@@ -1,3 +1,4 @@
+//src/api/productsApi.ts
 import { api } from "./axios";
 
 export const getProducts = async () => {

@@ -1,3 +1,4 @@
+//src/components/ui/Input.tsx
 interface Props {
   label: string;
   placeholder?: string;

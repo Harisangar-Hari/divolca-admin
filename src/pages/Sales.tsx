@@ -1,3 +1,4 @@
+//src/pages/Sales.tsx
 import { useEffect, useState } from "react";
 import { getSales } from "../api/salesApi";
 import { useNavigate } from "react-router-dom";
@@ -26,9 +27,12 @@ export default function Sales() {
   };
 
   const filteredSales = sales.filter((s) => {
-    const matchSearch = (s.invoiceNumber || "")
-      .toLowerCase()
-      .includes(search.toLowerCase());
+    const q = search.toLowerCase().trim();
+
+    const matchSearch =
+      !q ||
+      (s.invoiceNumber || "").toLowerCase().includes(q) ||
+      (s.customer?.name || "").toLowerCase().includes(q);
 
     const matchDate = date
       ? new Date(s.createdAt).toISOString().split("T")[0] === date
@@ -164,6 +168,7 @@ export default function Sales() {
                   <p className="font-semibold flex items-center gap-2 flex-wrap">
                     <span className="font-mono">{s.invoiceNumber}</span>
 
+
                     <span className={`text-[11px] font-semibold tracking-wide px-2 py-1 rounded-full ${statusColor(s)}`}>
                       {getPaymentStatus(s)}
                     </span>
@@ -177,6 +182,9 @@ export default function Sales() {
 
                   <p className="text-[13px] text-black/40 mt-1">
                     {new Date(s.createdAt).toLocaleString()}
+                  </p>
+                  <p className="text-[13px] text-black/40 mt-1">
+                    <span>{s.customer.name}</span>
                   </p>
 
                   {/* ✅ Show payment mode badge */}

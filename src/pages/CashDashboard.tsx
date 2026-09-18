@@ -1,3 +1,4 @@
+//src/pages/CashDashboard.tsx
 import { useEffect, useState } from "react";
 import {
     getDailyCash,

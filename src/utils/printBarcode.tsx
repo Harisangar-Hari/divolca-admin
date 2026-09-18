@@ -1,4 +1,4 @@
-// printBarcode.tsx
+//src/utils/printBarcode.tsx
 // Prints a barcode label sized for 38mm × 25mm (3.8×2.5cm) stickers.
 // Uses an online barcode API to generate the barcode image directly.
 

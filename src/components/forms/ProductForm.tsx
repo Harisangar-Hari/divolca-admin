@@ -1,3 +1,4 @@
+//src/components/forms/ProductForm.tsx
 import { useEffect, useState } from "react";
 import Input from "../ui/Input";
 import { printBarcode } from "../../utils/printBarcode";

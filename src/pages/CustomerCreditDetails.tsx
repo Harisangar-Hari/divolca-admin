@@ -1,7 +1,10 @@
+//src/pages/CustomerCreditDetails.tsx
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useToast } from "../store/toastStore";
-import { getCustomerById, getCustomerInvoices, payCustomerCredit } from "../api/customerApi";
+import { getCustomerById, getCustomerInvoices, getCustomerLedger, payCustomerCredit, type CustomerLedger } from "../api/customerApi";
+import { recordBulkCreditCheque } from "../api/creditChequeApi";
+import { useNavigate } from "react-router-dom";
 
 interface Customer {
     id: string;
@@ -58,6 +61,132 @@ export default function CustomerCreditDetails() {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showCustomerDetails, setShowCustomerDetails] = useState(false);
 
+
+
+    const [paymentMethod, setPaymentMethod] = useState<"cash" | "cheque">("cash");
+
+    // Cheque state
+    const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+    const [chequeNumber, setChequeNumber] = useState("");
+    const [chequeDate, setChequeDate] = useState(
+        new Date().toISOString().split("T")[0]
+    );
+    const [chequeNote, setChequeNote] = useState("");
+    const [chequeSubmitting, setChequeSubmitting] = useState(false);
+
+
+
+    const [showLedgerModal, setShowLedgerModal] = useState(false);
+    const [ledger, setLedger] = useState<CustomerLedger | null>(null);
+    const [ledgerLoading, setLedgerLoading] = useState(false);
+
+
+    const navigate = useNavigate();
+
+    const openLedger = async () => {
+        setShowLedgerModal(true);
+
+        if (ledger) return; // already loaded this session
+
+        try {
+            setLedgerLoading(true);
+            const data = await getCustomerLedger(id!);
+            setLedger(data);
+        } catch (error: any) {
+            showToast(
+                error?.response?.data?.message || "Failed to load ledger",
+                "error"
+            );
+        } finally {
+            setLedgerLoading(false);
+        }
+    };
+
+    const getLedgerTypeBadge = (type: string) => {
+        const map: Record<string, { label: string; color: string }> = {
+            SALE: { label: "Sale", color: "bg-orange-100 text-orange-700" },
+            PAYMENT: { label: "Payment", color: "bg-emerald-100 text-emerald-700" },
+            RETURN: { label: "Return", color: "bg-blue-100 text-blue-700" },
+            CANCELLATION: { label: "Cancellation", color: "bg-gray-100 text-gray-700" },
+            CANCELLATION_REVERSAL: { label: "Reversal", color: "bg-gray-100 text-gray-500" },
+            CHEQUE_PENDING: { label: "Cheque (Pending)", color: "bg-amber-100 text-amber-700" },
+            CHEQUE_BOUNCED: { label: "Cheque (Bounced)", color: "bg-red-100 text-red-700" },
+        };
+        return map[type] || { label: type, color: "bg-gray-100 text-gray-600" };
+    };
+
+    const formatNumber = (value: any): string => {
+        if (value === null || value === undefined) return "0";
+        const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+        if (isNaN(num)) return "0";
+        return num.toLocaleString();
+    };
+
+    // Helper function to safely get number value
+    const getNumber = (value: any): number => {
+        if (value === null || value === undefined) return 0;
+        const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+        return isNaN(num) ? 0 : num;
+    };
+
+    // Compute cheque total from selected invoices
+    const chequeTotal = invoices
+        .filter((i) => selectedInvoiceIds.includes(i.Id))
+        .reduce((sum, i) => sum + getNumber(i.BalanceAmount), 0);
+
+    // Reset modal state
+    const resetPaymentModal = () => {
+        setAmount("");
+        setPaymentMethod("cash");
+        setSelectedInvoiceIds([]);
+        setChequeNumber("");
+        setChequeDate(new Date().toISOString().split("T")[0]);
+        setChequeNote("");
+    };
+
+    // Handle cheque submission
+    const handleRecordCheque = async () => {
+        if (selectedInvoiceIds.length === 0) {
+            showToast("Select at least one invoice", "error");
+            return;
+        }
+        if (!chequeNumber.trim()) {
+            showToast("Cheque number is required", "error");
+            return;
+        }
+        if (!chequeDate) {
+            showToast("Cheque date is required", "error");
+            return;
+        }
+
+        try {
+            setChequeSubmitting(true);
+            await recordBulkCreditCheque({
+                saleIds: selectedInvoiceIds,
+                chequeNumber: chequeNumber.trim(),
+                chequeDate,
+                note: chequeNote.trim() || undefined,
+            });
+
+            showToast(
+                `Cheque recorded — Rs ${formatNumber(chequeTotal)} across ${selectedInvoiceIds.length} invoice(s)`,
+                "success"
+            );
+
+            setShowPaymentModal(false);
+            resetPaymentModal();
+            await load();
+        } catch (error: any) {
+            showToast(
+                error?.response?.data?.message || "Failed to record cheque",
+                "error"
+            );
+        } finally {
+            setChequeSubmitting(false);
+        }
+    };
+
+
     useEffect(() => {
         load();
     }, [id]);
@@ -86,19 +215,7 @@ export default function CustomerCreditDetails() {
     };
 
     // Helper function to safely format numbers
-    const formatNumber = (value: any): string => {
-        if (value === null || value === undefined) return "0";
-        const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-        if (isNaN(num)) return "0";
-        return num.toLocaleString();
-    };
 
-    // Helper function to safely get number value
-    const getNumber = (value: any): number => {
-        if (value === null || value === undefined) return 0;
-        const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-        return isNaN(num) ? 0 : num;
-    };
 
     const totalBalance = invoices.reduce(
         (sum, i) => sum + getNumber(i.BalanceAmount),
@@ -106,13 +223,13 @@ export default function CustomerCreditDetails() {
     );
 
     const handlePayCredit = async () => {
-        const paymentAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+        const paymentAmount =
+            typeof amount === "string" ? parseFloat(amount) : amount;
 
         if (!paymentAmount || paymentAmount <= 0) {
             showToast("Enter a valid amount", "error");
             return;
         }
-
         if (paymentAmount > totalBalance) {
             showToast("Amount exceeds outstanding balance", "error");
             return;
@@ -122,17 +239,15 @@ export default function CustomerCreditDetails() {
             await payCustomerCredit({
                 customerId: id!,
                 amount: paymentAmount,
+                paymentMethod: "cash", // Assuming cash for this function
             });
 
             showToast("Payment successful!", "success");
-            setAmount("");
             setShowPaymentModal(false);
+            resetPaymentModal();
             await load();
         } catch (error: any) {
-            showToast(
-                error?.response?.data?.message || "Payment failed",
-                "error"
-            );
+            showToast(error?.response?.data?.message || "Payment failed", "error");
         }
     };
 
@@ -236,6 +351,16 @@ export default function CustomerCreditDetails() {
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <path d="M19 9l-7 7-7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             </svg>
+                        </button>
+                        <button
+                            onClick={openLedger}
+                            className=" bg-white border border-black/10 hover:bg-[#F3F6F4] text-[#14181C] p-3 rounded-2xl shadow-sm font-medium text-[14px] transition flex items-center justify-center gap-2"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                <path d="M9 12h6M9 16h6" />
+                            </svg>
+                            View Ledger
                         </button>
                     </div>
 
@@ -412,7 +537,8 @@ export default function CustomerCreditDetails() {
                         return (
                             <div
                                 key={inv.Id}
-                                className="bg-white p-4 rounded-2xl shadow-sm border border-black/5 hover:shadow-md transition"
+                                onClick={() => navigate(`/sales/${inv.Id}`)}
+                                className="bg-white p-4 rounded-2xl shadow-sm border border-black/5 hover:shadow-md hover:border-[#0B6E4F]/30 cursor-pointer transition"
                             >
                                 <div className="flex justify-between gap-3">
                                     <div className="min-w-0">
@@ -460,62 +586,445 @@ export default function CustomerCreditDetails() {
             </div>
 
             {/* PAYMENT MODAL */}
+            {/* PAYMENT MODAL */}
             {showPaymentModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50 overflow-y-auto">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4 shadow-xl">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-[#14181C]">
-                                Make Payment
+                                Record Payment
                             </h2>
                             <button
-                                onClick={() => setShowPaymentModal(false)}
+                                onClick={() => {
+                                    setShowPaymentModal(false);
+                                    resetPaymentModal();
+                                }}
                                 className="text-black/30 hover:text-black/60"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-black/60">Outstanding Balance</span>
-                                <span className="font-bold text-red-600">Rs {formatNumber(totalBalance)}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
+                        {/* Customer info */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm space-y-1">
+                            <div className="flex justify-between">
                                 <span className="text-black/60">Customer</span>
                                 <span className="font-medium">{customer.name}</span>
                             </div>
+                            <div className="flex justify-between">
+                                <span className="text-black/60">Outstanding</span>
+                                <span className="font-bold text-red-600">
+                                    Rs {formatNumber(totalBalance)}
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-[13px] text-black/60 font-medium">
-                                Payment Amount
-                            </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                placeholder="Enter amount"
-                                className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-[16px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                            />
-                            {typeof amount === 'string' && parseFloat(amount) > totalBalance && (
-                                <p className="text-red-500 text-xs">Amount exceeds outstanding balance</p>
+                        {/* Method tabs */}
+                        <div className="flex border border-gray-300 rounded-xl overflow-hidden">
+                            <button
+                                onClick={() => setPaymentMethod("cash")}
+                                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${paymentMethod === "cash"
+                                    ? "bg-[#0B6E4F] text-white"
+                                    : "text-gray-600 hover:bg-gray-100"
+                                    }`}
+                            >
+                                Cash
+                            </button>
+                            <div className="w-px bg-gray-300" />
+                            <button
+                                onClick={() => setPaymentMethod("cheque")}
+                                className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${paymentMethod === "cheque"
+                                    ? "bg-[#4338CA] text-white"
+                                    : "text-gray-600 hover:bg-gray-100"
+                                    }`}
+                            >
+                                Cheque
+                            </button>
+                        </div>
+
+                        {/* ================= CASH TAB ================= */}
+                        {paymentMethod === "cash" && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                        Payment Amount
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                        placeholder="Enter amount"
+                                        className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-[16px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setAmount(totalBalance)}
+                                        className="mt-1 text-xs text-[#0B6E4F] font-medium hover:underline"
+                                    >
+                                        Pay full balance (Rs {formatNumber(totalBalance)})
+                                    </button>
+                                </div>
+
+                                <button
+                                    onClick={handlePayCredit}
+                                    className="w-full bg-[#0B6E4F] hover:bg-[#0A5F44] text-white p-3 rounded-xl font-semibold transition"
+                                >
+                                    Record Cash Payment
+                                </button>
+                            </div>
+                        )}
+
+                        {/* ================= CHEQUE TAB ================= */}
+                        {paymentMethod === "cheque" && (
+                            <div className="space-y-3">
+                                {/* Invoice picker */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[13px] text-black/60 font-medium">
+                                            Select Invoices
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const unpaid = invoices.filter(
+                                                    (i) => getNumber(i.BalanceAmount) > 0
+                                                );
+                                                const allSelected =
+                                                    selectedInvoiceIds.length ===
+                                                    unpaid.length;
+                                                setSelectedInvoiceIds(
+                                                    allSelected
+                                                        ? []
+                                                        : unpaid.map((i) => i.Id)
+                                                );
+                                            }}
+                                            className="text-xs text-[#4338CA] font-medium hover:underline"
+                                        >
+                                            {selectedInvoiceIds.length ===
+                                                invoices.filter(
+                                                    (i) => getNumber(i.BalanceAmount) > 0
+                                                ).length
+                                                ? "Clear All"
+                                                : "Select All"}
+                                        </button>
+                                    </div>
+
+                                    <div className="border border-black/10 rounded-xl max-h-56 overflow-y-auto bg-[#FAFAF8]">
+                                        {invoices.filter(
+                                            (i) => getNumber(i.BalanceAmount) > 0
+                                        ).length === 0 ? (
+                                            <p className="p-4 text-center text-sm text-black/40">
+                                                No unpaid invoices
+                                            </p>
+                                        ) : (
+                                            invoices
+                                                .filter(
+                                                    (i) => getNumber(i.BalanceAmount) > 0
+                                                )
+                                                .map((inv) => {
+                                                    const balance = getNumber(
+                                                        inv.BalanceAmount
+                                                    );
+                                                    const checked =
+                                                        selectedInvoiceIds.includes(
+                                                            inv.Id
+                                                        );
+                                                    return (
+                                                        <label
+                                                            key={inv.Id}
+                                                            className={`flex items-center gap-3 p-3 border-b border-black/5 last:border-0 cursor-pointer hover:bg-white transition ${checked
+                                                                ? "bg-blue-50/40"
+                                                                : ""
+                                                                }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedInvoiceIds(
+                                                                            (prev) => [
+                                                                                ...prev,
+                                                                                inv.Id,
+                                                                            ]
+                                                                        );
+                                                                    } else {
+                                                                        setSelectedInvoiceIds(
+                                                                            (prev) =>
+                                                                                prev.filter(
+                                                                                    (x) =>
+                                                                                        x !==
+                                                                                        inv.Id
+                                                                                )
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                className="w-4 h-4 accent-[#4338CA]"
+                                                            />
+                                                            <div className="flex-1">
+                                                                <p className="font-mono text-sm font-medium">
+                                                                    {inv.InvoiceNumber}
+                                                                </p>
+                                                                <p className="text-xs text-black/40">
+                                                                    {new Date(
+                                                                        inv.CreatedAt
+                                                                    ).toLocaleDateString()}
+                                                                </p>
+                                                            </div>
+                                                            <span className="font-mono font-semibold text-red-600 text-sm">
+                                                                Rs {formatNumber(balance)}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Computed total */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
+                                    <span className="text-sm font-medium text-blue-900">
+                                        Cheque Amount ({selectedInvoiceIds.length}{" "}
+                                        invoice
+                                        {selectedInvoiceIds.length === 1 ? "" : "s"})
+                                    </span>
+                                    <span className="font-mono font-bold text-lg text-blue-900">
+                                        Rs {formatNumber(chequeTotal)}
+                                    </span>
+                                </div>
+
+                                {/* Cheque fields */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                            Cheque Number *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={chequeNumber}
+                                            onChange={(e) =>
+                                                setChequeNumber(e.target.value)
+                                            }
+                                            placeholder="e.g. 123456"
+                                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                            Cheque Date *
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={chequeDate}
+                                            onChange={(e) =>
+                                                setChequeDate(e.target.value)
+                                            }
+                                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                        Note (optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={chequeNote}
+                                        onChange={(e) => setChequeNote(e.target.value)}
+                                        placeholder="e.g. Post-dated cheque"
+                                        className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={handleRecordCheque}
+                                    disabled={
+                                        selectedInvoiceIds.length === 0 ||
+                                        !chequeNumber.trim() ||
+                                        !chequeDate ||
+                                        chequeSubmitting
+                                    }
+                                    className="w-full bg-[#4338CA] hover:bg-[#372FA6] text-white p-3 rounded-xl font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {chequeSubmitting
+                                        ? "Recording..."
+                                        : `Record Cheque — Rs ${formatNumber(chequeTotal)}`}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {showLedgerModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] shadow-xl flex flex-col">
+                        {/* Header */}
+                        <div className="p-4 sm:p-5 border-b border-black/5 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold text-[#14181C]">
+                                    Customer Ledger
+                                </h2>
+                                <p className="text-[12px] text-black/40 mt-0.5">
+                                    {customer.name} • {customer.phone}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowLedgerModal(false)}
+                                className="text-black/30 hover:text-black/60 transition text-lg leading-none"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="overflow-y-auto flex-1 p-4 sm:p-5 space-y-4">
+                            {ledgerLoading && (
+                                <div className="space-y-2">
+                                    {[...Array(5)].map((_, i) => (
+                                        <div key={i} className="h-10 rounded-lg bg-black/5 animate-pulse" />
+                                    ))}
+                                </div>
+                            )}
+
+                            {!ledgerLoading && ledger && (
+                                <>
+                                    {/* Summary cards */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                                            <p className="text-[10px] font-semibold tracking-widest text-black/40 uppercase">
+                                                Total Invoiced
+                                            </p>
+                                            <p className="font-mono font-bold text-[15px] text-orange-700 mt-1">
+                                                Rs {ledger.summary.totalCredit.toLocaleString()}
+                                            </p>
+                                        </div>
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                                            <p className="text-[10px] font-semibold tracking-widest text-black/40 uppercase">
+                                                Total Paid
+                                            </p>
+                                            <p className="font-mono font-bold text-[15px] text-emerald-700 mt-1">
+                                                Rs {ledger.summary.totalDebit.toLocaleString()}
+                                            </p>
+                                        </div>
+                                        <div
+                                            className={`rounded-xl p-3 border ${ledger.summary.balance > 0
+                                                ? "bg-red-50 border-red-200"
+                                                : "bg-emerald-50 border-emerald-200"
+                                                }`}
+                                        >
+                                            <p className="text-[10px] font-semibold tracking-widest text-black/40 uppercase">
+                                                Balance
+                                            </p>
+                                            <p
+                                                className={`font-mono font-bold text-[15px] mt-1 ${ledger.summary.balance > 0
+                                                    ? "text-red-700"
+                                                    : "text-emerald-700"
+                                                    }`}
+                                            >
+                                                Rs {ledger.summary.balance.toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Ledger table */}
+                                    {ledger.entries.length === 0 ? (
+                                        <div className="py-10 text-center text-black/30 text-sm">
+                                            No ledger entries yet
+                                        </div>
+                                    ) : (
+                                        <div className="border border-black/5 rounded-xl overflow-hidden">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-[13px]">
+                                                    <thead className="bg-gray-50 border-b border-black/5">
+                                                        <tr>
+                                                            <th className="px-3 py-2.5 text-left font-semibold text-[11px] uppercase tracking-widest text-black/40">
+                                                                Date
+                                                            </th>
+                                                            <th className="px-3 py-2.5 text-left font-semibold text-[11px] uppercase tracking-widest text-black/40">
+                                                                Type
+                                                            </th>
+                                                            <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-widest text-black/40">
+                                                                Debit
+                                                            </th>
+                                                            <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-widest text-black/40">
+                                                                Credit
+                                                            </th>
+                                                            <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-widest text-black/40">
+                                                                Balance
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(() => {
+                                                            let running = 0;
+                                                            return ledger.entries.map((e) => {
+                                                                running += e.credit - e.debit;
+                                                                const badge = getLedgerTypeBadge(e.type);
+                                                                return (
+                                                                    <tr
+                                                                        key={e.id}
+                                                                        className="border-b border-black/5 last:border-0 hover:bg-[#FAFAF8] transition"
+                                                                    >
+                                                                        <td className="px-3 py-2.5 text-black/60 whitespace-nowrap">
+                                                                            {new Date(e.date).toLocaleDateString("en-GB", {
+                                                                                day: "2-digit",
+                                                                                month: "short",
+                                                                                year: "numeric",
+                                                                            })}
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5">
+                                                                            <span
+                                                                                className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${badge.color}`}
+                                                                            >
+                                                                                {badge.label}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 text-right font-mono text-emerald-600">
+                                                                            {e.debit > 0
+                                                                                ? `Rs ${e.debit.toLocaleString()}`
+                                                                                : "—"}
+                                                                        </td>
+                                                                        <td className="px-3 py-2.5 text-right font-mono text-orange-600">
+                                                                            {e.credit > 0
+                                                                                ? `Rs ${e.credit.toLocaleString()}`
+                                                                                : "—"}
+                                                                        </td>
+                                                                        <td
+                                                                            className={`px-3 py-2.5 text-right font-mono font-semibold ${running > 0
+                                                                                ? "text-red-600"
+                                                                                : "text-black/60"
+                                                                                }`}
+                                                                        >
+                                                                            Rs {running.toLocaleString()}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            });
+                                                        })()}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <p className="text-[11px] text-black/40 text-center italic">
+                                        Credit increases what the customer owes • Debit reduces it
+                                    </p>
+                                </>
                             )}
                         </div>
 
-                        <div className="flex gap-2 pt-1">
+                        {/* Footer */}
+                        <div className="p-4 border-t border-black/5 flex justify-end">
                             <button
-                                onClick={() => setShowPaymentModal(false)}
-                                className="flex-1 px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] cursor-pointer transition"
+                                onClick={() => setShowLedgerModal(false)}
+                                className="px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] transition"
                             >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handlePayCredit}
-                                className="flex-1 px-4 py-2.5 bg-[#0B6E4F] hover:bg-[#0A5F44] text-white rounded-xl font-medium text-[14px] cursor-pointer transition shadow-sm"
-                            >
-                                Pay Now
+                                Close
                             </button>
                         </div>
                     </div>

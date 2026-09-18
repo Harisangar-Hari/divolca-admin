@@ -1,3 +1,4 @@
+//src/api/purchaseApi.ts
 import { api } from "./axios";
 
 export interface Purchase {

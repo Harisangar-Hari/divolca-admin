@@ -3,19 +3,11 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getSaleById, cancelSale, editSale, updateSaleItem, addSaleItem, removeSaleItem } from "../api/salesApi";
 import { getProducts } from "../api/productsApi";
-import { printA4Receipt, type ReceiptData } from "../utils/printA4Receipt";
+import { printA4Receipt, downloadA4ReceiptPdf, type ReceiptData } from "../utils/printA4Receipt";
 import { useToast } from "../store/toastStore";
 
-// interface SaleItem {
-//     id: string;
-//     saleItemId: string;
-//     productId: string;
-//     productName: string;
-//     quantity: number;
-//     unitPrice: number;
-//     discount: number;
-//     total: number;
-// }
+
+
 
 
 export default function SaleDetail() {
@@ -64,13 +56,15 @@ export default function SaleDetail() {
                 setEditedDate(date.toISOString().split('T')[0]);
             }
 
-            const subTotal = data?.subTotal || 0;
+            const totalAmount = data?.totalAmount || 0;
             const discountAmount = data?.invoiceDiscountAmount || 0;
 
             if (!isDiscountManuallySet) {
-                const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+                const base = totalAmount + discountAmount;
+                const discountPercentage = base > 0 ? Math.round((discountAmount / base) * 100) : 0;
                 setEditedInvoiceDiscount(discountPercentage);
             }
+
         } catch (error) {
             console.error('Error loading sale:', error);
             showToast("Failed to load sale", "error");
@@ -221,9 +215,9 @@ export default function SaleDetail() {
     const handleSaveInvoiceDiscount = async () => {
         if (!id) return;
 
-        const subTotal = sale.subTotal || 0;
+        const base = (sale.totalAmount || 0) + (sale.invoiceDiscountAmount || 0);
         const discountPercentage = editedInvoiceDiscount;
-        const discountAmount = (subTotal * discountPercentage) / 100;
+        const discountAmount = (base * discountPercentage) / 100;
 
         if (discountAmount === 0 && discountPercentage === 0) {
             if (sale.invoiceDiscountAmount === 0) {
@@ -277,9 +271,9 @@ export default function SaleDetail() {
             let discountAmount = sale.invoiceDiscountAmount || 0;
 
             if (isDiscountManuallySet) {
-                const subTotal = sale.subTotal || 0;
+                const base = (sale.totalAmount || 0) + (sale.invoiceDiscountAmount || 0);
                 const discountPercentage = editedInvoiceDiscount;
-                discountAmount = Math.round((subTotal * discountPercentage) / 100 * 100) / 100;
+                discountAmount = Math.round((base * discountPercentage) / 100 * 100) / 100;
             } else {
                 discountAmount = sale.invoiceDiscountAmount || 0;
             }
@@ -317,9 +311,10 @@ export default function SaleDetail() {
     const startEditing = () => {
         setIsEditing(true);
         setEditedItems({});
-        const subTotal = sale?.subTotal || 0;
+        const totalAmount = sale?.totalAmount || 0;
         const discountAmount = sale?.invoiceDiscountAmount || 0;
-        const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+        const base = totalAmount + discountAmount;
+        const discountPercentage = base > 0 ? Math.round((discountAmount / base) * 100) : 0;
         setEditedInvoiceDiscount(discountPercentage);
         setIsDiscountManuallySet(false);
         setSearchTerm("");
@@ -336,9 +331,10 @@ export default function SaleDetail() {
     const cancelEditing = () => {
         setIsEditing(false);
         setEditedItems({});
-        const subTotal = sale?.subTotal || 0;
+        const totalAmount = sale?.totalAmount || 0;
         const discountAmount = sale?.invoiceDiscountAmount || 0;
-        const discountPercentage = subTotal > 0 ? Math.round((discountAmount / subTotal) * 100) : 0;
+        const base = totalAmount + discountAmount;
+        const discountPercentage = base > 0 ? Math.round((discountAmount / base) * 100) : 0;
         setEditedInvoiceDiscount(discountPercentage);
         setIsDiscountManuallySet(false);
         setSearchTerm("");
@@ -400,11 +396,11 @@ export default function SaleDetail() {
         if (!sale) return;
 
         const invoiceLevelDiscount = sale.invoiceDiscountAmount || 0;
-        const subTotal = sale.subTotal || 0;
+        const base = (sale.totalAmount || 0) + invoiceLevelDiscount;
 
         let discountPercent = 0;
-        if (subTotal > 0 && invoiceLevelDiscount > 0) {
-            discountPercent = Math.round((invoiceLevelDiscount / subTotal) * 100);
+        if (base > 0 && invoiceLevelDiscount > 0) {
+            discountPercent = Math.round((invoiceLevelDiscount / base) * 100);
         }
 
         const customerCreditBalance = sale.customer?.creditBalance || 0;
@@ -441,6 +437,62 @@ export default function SaleDetail() {
 
         printA4Receipt(receiptData);
     };
+
+
+
+    const handleDownloadPdf = async () => {
+        if (!sale) return;
+
+        const invoiceLevelDiscount = sale.invoiceDiscountAmount || 0;
+        const base = (sale.totalAmount || 0) + invoiceLevelDiscount;
+
+        let discountPercent = 0;
+        if (base > 0 && invoiceLevelDiscount > 0) {
+            discountPercent = Math.round((invoiceLevelDiscount / base) * 100);
+        }
+
+        const customerCreditBalance = sale.customer?.creditBalance || 0;
+        const currentBalance = sale.balanceAmount || 0;
+        const previousOutstanding = Math.max(0, customerCreditBalance - currentBalance);
+
+        const customerAddress = sale.customer?.address
+            ? `${sale.customer.address}${sale.customer.city ? `, ${sale.customer.city}` : ''}${sale.customer.country ? `, ${sale.customer.country}` : ''}`
+            : "";
+
+        const receiptData: ReceiptData = {
+            invoiceNumber: sale.invoiceNumber,
+            items: (sale.items ?? []).map((item: any) => ({
+                name: item.productName || "Product",
+                quantity: item.quantity,
+                price: item.originalPrice || item.unitPrice || 0,
+                discountPercent: item.discountPercent || 0,
+                discountRs: item.discount || 0,
+                sku: item.sku || "",
+            })),
+            createdAt: sale.createdAt || "",
+            customerName: sale.customer?.name || "",
+            customerPhone: sale.customer?.phone || "",
+            customerAddress: customerAddress,
+            total: sale.totalAmount || 0,
+            paid: sale.paidAmount || 0,
+            balance: sale.balanceAmount || 0,
+            change: 0,
+            paymentMode: sale.paymentMode || "cash",
+            invoiceDiscount: discountPercent,
+            invoiceDiscountAmount: invoiceLevelDiscount,
+            previousOutstanding: previousOutstanding,
+        };
+
+        try {
+            await downloadA4ReceiptPdf(receiptData);
+            showToast("PDF downloaded", "success");
+        } catch (err) {
+            console.error(err);
+            showToast("Failed to generate PDF", "error");
+        }
+    };
+
+
 
     if (loading) {
         return (
@@ -568,6 +620,13 @@ export default function SaleDetail() {
                         </button>
 
                         <button
+                            onClick={handleDownloadPdf}
+                            className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer transition shadow-sm"
+                        >
+                            📥 Download PDF
+                        </button>
+
+                        <button
                             onClick={() => navigate(-1)}
                             className="text-[13px] font-medium bg-white border border-black/10 text-black/60 px-3.5 py-2 rounded-xl hover:bg-[#F3F6F4] cursor-pointer transition shadow-sm"
                         >
@@ -615,7 +674,7 @@ export default function SaleDetail() {
 
                             {editedInvoiceDiscount > 0 && (
                                 <span className="text-sm text-green-600">
-                                    = Rs {((sale.subTotal || 0) * editedInvoiceDiscount / 100).toFixed(2)}
+                                    = Rs {(((sale.totalAmount || 0) + (sale.invoiceDiscountAmount || 0)) * editedInvoiceDiscount / 100).toFixed(2)}
                                 </span>
                             )}
 
@@ -629,7 +688,9 @@ export default function SaleDetail() {
 
                             <span className="text-xs text-black/40">
                                 Current: {sale.invoiceDiscountAmount > 0
-                                    ? `${Math.round((sale.invoiceDiscountAmount / (sale.subTotal || 1)) * 100)}% (Rs ${sale.invoiceDiscountAmount || 0})`
+                                    ? `${Math.round(
+                                        (sale.invoiceDiscountAmount / ((sale.totalAmount || 0) + (sale.invoiceDiscountAmount || 1))) * 100
+                                    )}% (Rs ${sale.invoiceDiscountAmount || 0})`
                                     : 'No discount'
                                 }
                             </span>
@@ -852,8 +913,8 @@ export default function SaleDetail() {
                         <p className="text-[11px] tracking-widest uppercase text-white/40 font-semibold">Balance</p>
                         <p
                             className={`mt-1 font-mono text-3xl font-semibold tabular-nums ${(sale.balanceAmount || 0) > 0
-                                    ? "text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]"
-                                    : "text-[#4ADE9A] [text-shadow:0_0_18px_rgba(74,222,154,0.35)]"
+                                ? "text-[#F87171] [text-shadow:0_0_18px_rgba(248,113,113,0.35)]"
+                                : "text-[#4ADE9A] [text-shadow:0_0_18px_rgba(74,222,154,0.35)]"
                                 }`}
                         >
                             Rs {(sale.balanceAmount || 0).toFixed(2)}

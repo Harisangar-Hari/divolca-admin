@@ -1,3 +1,4 @@
+//src/pages/Categories.tsx
 import { useEffect, useState } from "react";
 import {
   getCategories,

@@ -1,4 +1,4 @@
-// PrintReceipt.ts
+// src/utils/printReceipt.ts
 // Works reliably on Chrome/Windows with Xprinter 72mm thermal printer
 
 import logoSrc from "../assets/logo.jpeg";

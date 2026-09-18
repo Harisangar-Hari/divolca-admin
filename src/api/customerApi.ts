@@ -1,3 +1,4 @@
+//src/api/customerApi.ts
 import { api } from "./axios";
 
 // =========================
@@ -201,10 +202,12 @@ export const createCustomer = async (data: {
 export const payCustomerCredit = async (data: {
     customerId: string;
     amount: number;
+    paymentMethod: "cash" | "credit" | "card";
 }) => {
     const res = await api.post("/customers/pay-customer-credit", {
         customerId: data.customerId,
         amount: data.amount,
+        paymentMethod: data.paymentMethod
     });
 
     return {
@@ -290,4 +293,60 @@ export const toggleBlockCustomer = async (id: string, reason?: string) => {
 export const deleteCustomer = async (id: string) => {
     const res = await api.delete(`/customers/${id}`);
     return res.data;
+};
+
+
+// =========================
+// CUSTOMER LEDGER
+// =========================
+export interface LedgerEntry {
+    id: string;
+    date: string;
+    type: string;
+    debit: number;
+    credit: number;
+    saleId: string | null;
+    saleReturnId: string | null;
+}
+
+export interface CustomerLedger {
+    customer: {
+        id: string;
+        name: string;
+        phone: string;
+    };
+    summary: {
+        totalCredit: number;
+        totalDebit: number;
+        balance: number;
+    };
+    entries: LedgerEntry[];
+}
+
+export const getCustomerLedger = async (
+    customerId: string
+): Promise<CustomerLedger> => {
+    const res = await api.get(`/customer-ledger/${customerId}`);
+
+    return {
+        customer: {
+            id: res.data.customer.Id,
+            name: res.data.customer.Name,
+            phone: res.data.customer.Phone,
+        },
+        summary: {
+            totalCredit: Number(res.data.summary.totalCredit || 0),
+            totalDebit: Number(res.data.summary.totalDebit || 0),
+            balance: Number(res.data.summary.balance || 0),
+        },
+        entries: (res.data.entries || []).map((e: any) => ({
+            id: e.Id,
+            date: e.CreatedAt,
+            type: e.Type,
+            debit: Number(e.Debit || 0),
+            credit: Number(e.Credit || 0),
+            saleId: e.SaleId || null,
+            saleReturnId: e.SaleReturnId || null,
+        })),
+    };
 };

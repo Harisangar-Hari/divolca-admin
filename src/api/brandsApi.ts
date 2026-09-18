@@ -1,3 +1,4 @@
+//src/api/brandsApi.ts
 import { api } from "./axios";
 
 // GET ALL BRANDS

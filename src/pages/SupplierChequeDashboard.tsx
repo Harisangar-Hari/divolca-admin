@@ -1,3 +1,4 @@
+//src/pages/SupplierChequeDashboard.tsx
 import { useEffect, useState } from "react";
 import { getChequeDashboard, clearCheque } from "../api/chequeApi";
 

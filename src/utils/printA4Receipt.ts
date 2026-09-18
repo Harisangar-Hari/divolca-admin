@@ -1,4 +1,8 @@
 // src/utils/printA4Receipt.ts - Updated with payment mode
+import html2canvasPro from "html2canvas-pro";
+import { jsPDF } from "jspdf";
+
+
 
 export interface PrintItem {
   name: string;
@@ -60,7 +64,7 @@ function numberToWords(num: number): string {
   return result;
 }
 
-export async function printA4Receipt(data: ReceiptData): Promise<void> {
+export function buildA4ReceiptHtml(data: ReceiptData): string {
   // const now = new Date();
   // const dateStr = now.toISOString().split("T")[0];
 
@@ -139,7 +143,7 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
   const netTotal = grandTotalWithoutDiscount - combinedDiscountAmount;
   const words = numberToWords(netTotal);
 
-  const html = `
+  return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -832,13 +836,132 @@ export async function printA4Receipt(data: ReceiptData): Promise<void> {
 </body>
 </html>
   `;
+}
 
+// ============================================================
+// PRINT (existing behaviour)
+// ============================================================
+export async function printA4Receipt(data: ReceiptData): Promise<void> {
+  const html = buildA4ReceiptHtml(data);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-
   const win = window.open(url, "_blank");
-
   if (win) {
-    win.document.title = `Invoice ${data.invoiceNumber || ''}`;
+    win.document.title = `Invoice ${data.invoiceNumber || ""}`;
+  }
+}
+
+// ============================================================
+// DOWNLOAD PDF (NEW — client-side)
+// ============================================================
+export async function downloadA4ReceiptPdf(data: ReceiptData): Promise<void> {
+  const fullHtml = buildA4ReceiptHtml(data);
+
+  const parsed = new DOMParser().parseFromString(fullHtml, "text/html");
+  const styleEl = parsed.querySelector("style");
+  const invoiceEl = parsed.querySelector(".invoice");
+
+  if (!styleEl || !invoiceEl) {
+    throw new Error("Failed to build invoice layout");
+  }
+
+  // Backdrop
+  const backdrop = document.createElement("div");
+  backdrop.setAttribute("data-invoice-pdf-backdrop", "true");
+  backdrop.style.position = "fixed";
+  backdrop.style.inset = "0";
+  backdrop.style.background = "rgba(15, 23, 42, 0.65)";
+  backdrop.style.zIndex = "2147483646";
+  backdrop.style.pointerEvents = "none";
+  backdrop.innerHTML = `
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                    background:#fff;padding:16px 24px;border-radius:12px;
+                    font:14px system-ui,sans-serif;color:#0f172a;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+            Generating PDF…
+        </div>
+    `;
+
+  // On-screen wrapper (must be at 0,0)
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("data-invoice-pdf-wrapper", "true");
+  wrapper.style.position = "fixed";
+  wrapper.style.top = "0";
+  wrapper.style.left = "0";
+  wrapper.style.width = "216mm";
+  wrapper.style.minHeight = "279mm";
+  wrapper.style.background = "#ffffff";
+  wrapper.style.zIndex = "2147483647";
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.overflow = "hidden";
+
+  // Inject styles
+  const styleClone = document.createElement("style");
+  styleClone.setAttribute("data-invoice-pdf-style", "true");
+  styleClone.textContent = styleEl.textContent || "";
+  document.head.appendChild(styleClone);
+
+  // Tailwind neutralization (keep from earlier fix)
+  const fixStyle = document.createElement("style");
+  fixStyle.setAttribute("data-invoice-pdf-fix", "true");
+  fixStyle.textContent = `
+        [data-invoice-pdf-wrapper] img,
+        [data-invoice-pdf-wrapper] svg {
+            display: inline-block !important;
+            vertical-align: middle !important;
+        }
+        [data-invoice-pdf-wrapper] * {
+            line-height: inherit !important;
+        }
+        [data-invoice-pdf-wrapper] td,
+        [data-invoice-pdf-wrapper] th {
+            vertical-align: middle !important;
+        }
+    `;
+  document.head.appendChild(fixStyle);
+
+  // Clone invoice
+  const invoiceClone = invoiceEl.cloneNode(true) as HTMLElement;
+  invoiceClone.style.margin = "0";
+  wrapper.appendChild(invoiceClone);
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(wrapper);
+
+  try {
+    // Let fonts + layout settle
+    await document.fonts.ready;
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => setTimeout(r, 400));
+
+    // ✅ html2canvas-pro renders here — fixes vertical drift
+    const canvas = await html2canvasPro(wrapper, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 900,
+      windowHeight: 1200,
+      logging: false,
+    });
+
+    // Build PDF
+    const imgData = canvas.toDataURL("image/jpeg", 0.98);
+
+    const pdf = new jsPDF({
+      unit: "mm",
+      format: [216, 279],
+      orientation: "portrait",
+      compress: true,
+    });
+
+    pdf.addImage(imgData, "JPEG", 0, 0, 216, 279);
+    pdf.save(`Invoice-${data.invoiceNumber || "sale"}.pdf`);
+  } finally {
+    document.body.removeChild(wrapper);
+    document.body.removeChild(backdrop);
+    document.head.removeChild(styleClone);
+    document.head.removeChild(fixStyle);
   }
 }

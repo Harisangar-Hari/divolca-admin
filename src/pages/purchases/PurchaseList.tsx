@@ -1,3 +1,4 @@
+//src/pages/purchases/PurchaseList.tsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPurchases } from "../../api/purchaseApi";

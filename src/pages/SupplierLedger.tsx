@@ -1,3 +1,4 @@
+//src/pages/SupplierLedger.tsx
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getSupplierLedger } from "../api/supplierApi";

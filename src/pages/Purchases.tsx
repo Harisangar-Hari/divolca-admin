@@ -1,3 +1,4 @@
+//src/pages/Purchases.tsx
 import { useEffect, useState } from "react";
 import { getProducts } from "../api/productsApi";
 import { api } from "../api/axios";

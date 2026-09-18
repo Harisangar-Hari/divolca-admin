@@ -1,3 +1,4 @@
+//src/pages/Suppliers.tsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getSuppliers } from "../api/supplierApi";
