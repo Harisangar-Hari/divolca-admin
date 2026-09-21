@@ -119,7 +119,7 @@ export default function CustomerReport() {
     // ---------------- Details derived ----------------
     const filteredInvoices = useMemo(() => {
         const q = search.toLowerCase().trim();
-        return invoices.filter((inv) => {
+        const filtered = invoices.filter((inv) => {
             const matchesSearch =
                 !q ||
                 inv.InvoiceNumber.toLowerCase().includes(q) ||
@@ -128,6 +128,17 @@ export default function CustomerReport() {
             const matchesBucket =
                 bucketFilter === "ALL" || inv.Bucket === bucketFilter;
             return matchesSearch && matchesBucket;
+        });
+
+        // ✅ Group by customer → then invoice date ascending within each customer
+        return filtered.sort((a, b) => {
+            const nameCompare = a.CustomerName.localeCompare(b.CustomerName);
+            if (nameCompare !== 0) return nameCompare;
+            // Within the same customer, oldest invoice first
+            return (
+                new Date(a.InvoiceDate).getTime() -
+                new Date(b.InvoiceDate).getTime()
+            );
         });
     }, [invoices, search, bucketFilter]);
 
@@ -330,8 +341,8 @@ export default function CustomerReport() {
                 <button
                     onClick={() => setTab("summary")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition ${tab === "summary"
-                            ? "bg-[#14181C] text-white"
-                            : "text-black/50 hover:text-black/70"
+                        ? "bg-[#14181C] text-white"
+                        : "text-black/50 hover:text-black/70"
                         }`}
                 >
                     Summary (Aging)
@@ -339,8 +350,8 @@ export default function CustomerReport() {
                 <button
                     onClick={() => setTab("details")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition ${tab === "details"
-                            ? "bg-[#14181C] text-white"
-                            : "text-black/50 hover:text-black/70"
+                        ? "bg-[#14181C] text-white"
+                        : "text-black/50 hover:text-black/70"
                         }`}
                 >
                     Details (By Invoice)
@@ -502,8 +513,8 @@ export default function CustomerReport() {
                                                 )
                                             }
                                             className={`border-b border-black/5 cursor-pointer hover:bg-[#FAFAF8] transition ${c.days151plus > 0
-                                                    ? "bg-red-50/30"
-                                                    : ""
+                                                ? "bg-red-50/30"
+                                                : ""
                                                 }`}
                                         >
                                             <td className="px-4 py-3">
@@ -654,10 +665,10 @@ export default function CustomerReport() {
                                             <td className="px-3 py-3 text-center">
                                                 <span
                                                     className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${r.PaymentMode === "cash"
-                                                            ? "bg-emerald-100 text-emerald-700"
-                                                            : r.PaymentMode === "card"
-                                                                ? "bg-blue-100 text-blue-700"
-                                                                : "bg-purple-100 text-purple-700"
+                                                        ? "bg-emerald-100 text-emerald-700"
+                                                        : r.PaymentMode === "card"
+                                                            ? "bg-blue-100 text-blue-700"
+                                                            : "bg-purple-100 text-purple-700"
                                                         }`}
                                                 >
                                                     {r.PaymentMode}

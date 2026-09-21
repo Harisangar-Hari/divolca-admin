@@ -111,6 +111,7 @@ export default function CustomerCreditDetails() {
             CANCELLATION_REVERSAL: { label: "Reversal", color: "bg-gray-100 text-gray-500" },
             CHEQUE_PENDING: { label: "Cheque (Pending)", color: "bg-amber-100 text-amber-700" },
             CHEQUE_BOUNCED: { label: "Cheque (Bounced)", color: "bg-red-100 text-red-700" },
+            CHEQUE_CLEARED: { label: "Cheque Cleared", color: "bg-emerald-100 text-emerald-800" },
         };
         return map[type] || { label: type, color: "bg-gray-100 text-gray-600" };
     };
@@ -278,9 +279,9 @@ export default function CustomerCreditDetails() {
 
         const statusMap: Record<number, { label: string; color: string }> = {
             0: { label: "Pending", color: "bg-yellow-100 text-yellow-800" },
-            1: { label: "Completed", color: "bg-green-100 text-green-800" },
-            2: { label: "Cancelled", color: "bg-red-100 text-red-800" },
-            3: { label: "Refunded", color: "bg-gray-100 text-gray-800" },
+            1: { label: "Partially Returned", color: "bg-green-100 text-green-800" },
+            2: { label: "Fully Returned", color: "bg-red-100 text-red-800" },
+            3: { label: "Completed", color: "bg-gray-100 text-gray-800" },
             4: { label: "Cancelled", color: "bg-gray-100 text-gray-800" },
         };
 

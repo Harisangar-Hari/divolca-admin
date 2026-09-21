@@ -17,6 +17,7 @@ export interface ChequeSummary {
     dueToday: number;
 
     cleared: number;
+    bounced: number;
 
 }
 
@@ -55,6 +56,7 @@ export interface ChequeDashboard {
     dueToday: Cheque[];
 
     cleared: Cheque[];
+    bounced: Cheque[];
 
 }
 
@@ -145,7 +147,9 @@ export const getChequeDashboard =
 
 
                 cleared:
-                    data.summary.cleared
+                    data.summary.cleared,
+
+                bounced: data.summary.bounced ?? 0,
 
             },
 
@@ -171,8 +175,8 @@ export const getChequeDashboard =
 
             cleared:
                 (data.cleared ?? [])
-                    .map(mapCheque)
-
+                    .map(mapCheque),
+            bounced: (data.bounced ?? []).map(mapCheque),
 
         };
 

@@ -292,9 +292,8 @@ export const toggleBlockCustomer = async (id: string, reason?: string) => {
 
 export const deleteCustomer = async (id: string) => {
     const res = await api.delete(`/customers/${id}`);
-    return res.data;
+    return res.data; // now includes .deleted: { sales, payments, ledgerEntries, quotations }
 };
-
 
 // =========================
 // CUSTOMER LEDGER

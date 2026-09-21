@@ -43,8 +43,9 @@ export default function Sales() {
 
   // ✅ Status helper functions
   const isCancelled = (status: any) => status === 4 || status === "Cancelled";
-  const isReturned = (status: any) => status === 2 || status === "Returned" || status === "FULLY_RETURNED";
+  const isReturned = (status: any) => status === 2 || status === "Fully Returned" || status === "FULLY_RETURNED";
   const isCompleted = (status: any) => status === 3 || status === "Completed";
+  const isPartial = (status: any) => status === 1 || status === "Partially Returned";
 
   // ✅ Get payment status based on status field
   const getPaymentStatus = (s: any) => {
@@ -56,6 +57,7 @@ export default function Sales() {
 
     // 3. Check if Completed (status = 3)
     if (isCompleted(s.status)) return "Completed";
+    if (isPartial(s.status)) return "Partially Returned";
 
     // 4. Check if partially paid (status = 1 or balance > 0 and paid > 0)
     if (s.status === 1 || (s.balanceAmount > 0 && s.paidAmount > 0)) return "Partial";

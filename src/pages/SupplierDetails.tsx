@@ -29,17 +29,28 @@ export default function SupplierDetails() {
 
     const [tab, setTab] = useState<"overview" | "invoices" | "payments">("overview");
 
-    const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+    // ✅ Multi-select + payment state
+    const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<string[]>([]);
     const [payAmount, setPayAmount] = useState<number>(0);
-
     const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Cheque">("Cash");
-
     const [chequeNumber, setChequeNumber] = useState("");
-    const [chequeDate, setChequeDate] = useState("");
+    const [chequeDate, setChequeDate] = useState(
+        new Date().toISOString().split("T")[0]
+    );
+
+    const selectedTotal =
+        data?.purchases
+            .filter((p) => selectedPurchaseIds.includes(p.id))
+            .reduce((sum, p) => sum + (p.balanceAmount || 0), 0) || 0;
 
     useEffect(() => {
         load();
     }, [id]);
+    useEffect(() => {
+        // Auto-fill the cash amount to match the selected total
+        setPayAmount(selectedTotal);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedPurchaseIds.join(",")]);
 
     const load = async () => {
         try {
@@ -61,39 +72,62 @@ export default function SupplierDetails() {
         data?.purchases?.reduce((sum, p) => sum + (p.balanceAmount || 0), 0) || 0;
 
     const resetForm = () => {
+        setSelectedPurchaseIds([]);
         setPayAmount(0);
-        setSelectedPurchaseId(null);
+        setPaymentMethod("Cash");
         setChequeNumber("");
-        setChequeDate("");
+        setChequeDate(new Date().toISOString().split("T")[0]);
     };
 
     const paySupplier = async () => {
-        if (!selectedPurchaseId) return alert("Select invoice");
-        if (payAmount <= 0) return alert("Enter valid amount");
+        if (selectedPurchaseIds.length === 0) {
+            alert("Select at least one invoice");
+            return;
+        }
+
+        if (paymentMethod === "Cash" && payAmount <= 0) {
+            alert("Enter a valid amount");
+            return;
+        }
 
         if (paymentMethod === "Cheque") {
-            if (!chequeNumber) return alert("Enter cheque number");
-            if (!chequeDate) return alert("Select cheque date");
+            if (!chequeNumber.trim()) {
+                alert("Enter cheque number");
+                return;
+            }
+            if (!chequeDate) {
+                alert("Select cheque date");
+                return;
+            }
         }
 
         try {
             await api.post("/suppliers/pay", {
-                purchaseId: selectedPurchaseId,
-                amount: payAmount,
-                paymentMethod: paymentMethod,
-                chequeNumber: paymentMethod === "Cheque" ? chequeNumber : null,
-                chequeDate: paymentMethod === "Cheque" ? chequeDate : null
+                purchaseIds: selectedPurchaseIds,
+                amount: paymentMethod === "Cash" ? payAmount : undefined,
+                paymentMethod,
+                chequeNumber:
+                    paymentMethod === "Cheque" ? chequeNumber : undefined,
+                chequeDate:
+                    paymentMethod === "Cheque" ? chequeDate : undefined,
             });
+
+            alert(
+                paymentMethod === "Cash"
+                    ? "Payment recorded successfully"
+                    : "Cheque recorded — awaiting clearance"
+            );
 
             resetForm();
             load();
-            alert("Payment successful");
         } catch (err: any) {
             console.error(err);
-            alert(err?.response?.data || "Payment failed");
+            alert(
+                err?.response?.data?.message ||
+                "Payment failed"
+            );
         }
     };
-
     if (loading) {
         return (
             <div className="min-h-screen bg-[#EEF1EF] p-4 md:p-6 font-sans">
@@ -113,6 +147,8 @@ export default function SupplierDetails() {
             </div>
         );
     }
+
+
 
     return (
         <div className="min-h-screen bg-[#EEF1EF] p-4 md:p-6 font-sans text-[#14181C]">
@@ -233,75 +269,207 @@ export default function SupplierDetails() {
 
                 {/* PAY */}
                 {tab === "payments" && (
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-black/5 space-y-3">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-black/5 space-y-4">
 
                         <p className="text-[11px] font-semibold tracking-widest text-black/40 uppercase">
                             Pay supplier
                         </p>
 
-                        {/* Invoice */}
-                        <select
-                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-pointer text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                            value={selectedPurchaseId || ""}
-                            onChange={(e) => setSelectedPurchaseId(e.target.value)}
-                        >
-                            <option value="">Select invoice</option>
-                            {data.purchases
-                                .filter(p => p.balanceAmount > 0)
-                                .map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.invoiceNumber} (Balance: {p.balanceAmount})
-                                    </option>
-                                ))}
-                        </select>
+                        {/* Invoice picker */}
+                        <div>
+                            <div className="flex justify-between items-center mb-1.5">
+                                <label className="text-[13px] text-black/60 font-medium">
+                                    Select Invoices
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const unpaid = data.purchases.filter(
+                                            (p) => p.balanceAmount > 0
+                                        );
+                                        const allSelected =
+                                            selectedPurchaseIds.length === unpaid.length;
+                                        setSelectedPurchaseIds(
+                                            allSelected ? [] : unpaid.map((p) => p.id)
+                                        );
+                                    }}
+                                    className="text-xs text-[#4338CA] font-medium hover:underline"
+                                >
+                                    {selectedPurchaseIds.length ===
+                                        data.purchases.filter((p) => p.balanceAmount > 0).length
+                                        ? "Clear All"
+                                        : "Select All"}
+                                </button>
+                            </div>
 
-                        {/* Amount */}
-                        <input
-                            type="number"
-                            value={payAmount}
-                            onChange={(e) => setPayAmount(Number(e.target.value))}
-                            placeholder="Amount"
-                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-text font-mono text-[15px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                        />
+                            <div className="border border-black/10 rounded-xl max-h-56 overflow-y-auto bg-[#FAFAF8]">
+                                {data.purchases.filter((p) => p.balanceAmount > 0).length ===
+                                    0 ? (
+                                    <p className="p-4 text-center text-sm text-black/40">
+                                        No unpaid invoices
+                                    </p>
+                                ) : (
+                                    data.purchases
+                                        .filter((p) => p.balanceAmount > 0)
+                                        .map((p) => {
+                                            const checked = selectedPurchaseIds.includes(
+                                                p.id
+                                            );
+                                            return (
+                                                <label
+                                                    key={p.id}
+                                                    className={`flex items-center gap-3 p-3 border-b border-black/5 last:border-0 cursor-pointer hover:bg-white transition ${checked ? "bg-blue-50/40" : ""
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedPurchaseIds(
+                                                                    (prev) => [...prev, p.id]
+                                                                );
+                                                            } else {
+                                                                setSelectedPurchaseIds((prev) =>
+                                                                    prev.filter(
+                                                                        (x) => x !== p.id
+                                                                    )
+                                                                );
+                                                            }
+                                                        }}
+                                                        className="w-4 h-4 accent-[#4338CA]"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-mono text-[13px] font-medium truncate">
+                                                            {p.invoiceNumber}
+                                                        </p>
+                                                        <p className="text-[11px] text-black/40">
+                                                            {new Date(
+                                                                p.purchaseDate
+                                                            ).toLocaleDateString("en-GB", {
+                                                                day: "2-digit",
+                                                                month: "short",
+                                                                year: "numeric",
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                    <span className="font-mono font-semibold text-red-600 text-[13px] shrink-0">
+                                                        Rs {p.balanceAmount.toLocaleString()}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Total */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
+                            <span className="text-sm font-medium text-blue-900">
+                                Total ({selectedPurchaseIds.length} invoice
+                                {selectedPurchaseIds.length === 1 ? "" : "s"})
+                            </span>
+                            <span className="font-mono font-bold text-lg text-blue-900">
+                                Rs {selectedTotal.toLocaleString()}
+                            </span>
+                        </div>
 
                         {/* Payment Method */}
-                        <select
-                            value={paymentMethod}
-                            onChange={(e) =>
-                                setPaymentMethod(e.target.value as "Cash" | "Cheque")
-                            }
-                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-pointer text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                        >
-                            <option value="Cash">Cash</option>
-                            <option value="Cheque">Cheque</option>
-                        </select>
+                        <div>
+                            <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                Payment Method
+                            </label>
+                            <select
+                                value={paymentMethod}
+                                onChange={(e) =>
+                                    setPaymentMethod(e.target.value as "Cash" | "Cheque")
+                                }
+                                className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-pointer text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                            >
+                                <option value="Cash">Cash</option>
+                                <option value="Cheque">Cheque</option>
+                            </select>
+                        </div>
 
-                        {/* CHEQUE FIELDS */}
+                        {/* Amount (only for Cash — cheque covers full total automatically) */}
+                        {paymentMethod === "Cash" && (
+                            <div>
+                                <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                    Amount
+                                </label>
+                                <input
+                                    type="number"
+                                    value={payAmount || ""}
+                                    onChange={(e) => setPayAmount(Number(e.target.value))}
+                                    placeholder="Enter amount"
+                                    className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-[15px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                />
+                                <div className="flex justify-between items-center mt-1">
+                                    <span className="text-[11px] text-black/40">
+                                        Allocated oldest invoice first
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayAmount(selectedTotal)}
+                                        className="text-[11px] text-[#0B6E4F] font-medium hover:underline"
+                                    >
+                                        Pay full selected total
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Cheque Fields */}
                         {paymentMethod === "Cheque" && (
                             <>
-                                <input
-                                    type="text"
-                                    value={chequeNumber}
-                                    onChange={(e) => setChequeNumber(e.target.value)}
-                                    placeholder="Cheque number"
-                                    className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-text text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                                />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                            Cheque Number *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={chequeNumber}
+                                            onChange={(e) => setChequeNumber(e.target.value)}
+                                            placeholder="e.g. 123456"
+                                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                            Cheque Date *
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={chequeDate}
+                                            onChange={(e) => setChequeDate(e.target.value)}
+                                            className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                        />
+                                    </div>
+                                </div>
 
-                                <input
-                                    type="date"
-                                    value={chequeDate}
-                                    onChange={(e) => setChequeDate(e.target.value)}
-                                    className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl cursor-pointer text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
-                                />
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-800">
+                                    💡 The cheque will be recorded as <strong>pending</strong>.
+                                    Clear it from the Supplier Cheque Dashboard once the bank
+                                    confirms.
+                                </div>
                             </>
                         )}
 
-                        {/* BUTTON */}
+                        {/* Submit */}
                         <button
                             onClick={paySupplier}
-                            className="w-full bg-[#0B6E4F] hover:bg-[#0A5F44] text-white p-3.5 rounded-2xl font-semibold tracking-wide cursor-pointer transition shadow-sm"
+                            disabled={
+                                selectedPurchaseIds.length === 0 ||
+                                (paymentMethod === "Cash" && payAmount <= 0) ||
+                                (paymentMethod === "Cheque" &&
+                                    (!chequeNumber.trim() || !chequeDate))
+                            }
+                            className="w-full bg-[#0B6E4F] hover:bg-[#0A5F44] text-white p-3.5 rounded-2xl font-semibold tracking-wide cursor-pointer transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Pay
+                            {paymentMethod === "Cash"
+                                ? `Pay Rs ${payAmount.toLocaleString()}`
+                                : `Record Cheque — Rs ${selectedTotal.toLocaleString()}`}
                         </button>
                     </div>
                 )}

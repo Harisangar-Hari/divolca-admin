@@ -267,7 +267,7 @@ export const getSupplierLedger = async (
 
                 notes:
                     p.Notes,
-                purchases:{
+                purchases: {
                     InvoiceNumber: p.Purchases?.InvoiceNumber
                 }
 
@@ -276,4 +276,24 @@ export const getSupplierLedger = async (
 
     };
 
+
+
+};
+
+export const clearChequeByNumber = async (chequeNumber: string) => {
+    const res = await api.post(
+        `/suppliers/cheque/clear-by-number/${encodeURIComponent(chequeNumber)}`
+    );
+    return res.data;
+};
+
+export const bounceChequeByNumber = async (
+    chequeNumber: string,
+    reason?: string
+) => {
+    const res = await api.post(
+        `/suppliers/cheque/bounce-by-number/${encodeURIComponent(chequeNumber)}`,
+        { reason }
+    );
+    return res.data;
 };

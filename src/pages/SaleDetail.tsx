@@ -350,12 +350,14 @@ export default function SaleDetail() {
 
     // Status helper functions
     const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
-    const isReturned = () => sale?.status === 2 || sale?.status === "Returned" || sale?.status === "FULLY_RETURNED";
+    const isReturned = () => sale?.status === 2 || sale?.status === "Fully Returned" || sale?.status === "FULLY_RETURNED";
     const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
+    const isPartial = () =>sale?.status === 1 || sale?.status === "Partially Returned";
 
     const getStatus = () => {
         if (isCancelled()) return "Cancelled";
-        if (isReturned()) return "Returned";
+        if (isReturned()) return "Fully Returned";
+        if (isPartial()) return "Partially Returned";
         if (isCompleted()) return "Completed";
         if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "Partial";
         if (sale?.balanceAmount === 0) return "Paid";
@@ -547,17 +549,22 @@ export default function SaleDetail() {
                         <h1 className="text-xl font-bold font-mono">
                             {sale.invoiceNumber}
                         </h1>
-                        <span className={`text-[11px] font-semibold tracking-wide px-2.5 py-1 rounded-full ${statusColor}`}>
-                            {statusLabel}
-                        </span>
-                        <span className="text-[10px] font-mono bg-gray-100 px-2 py-1 rounded-full text-gray-600">
-                            {sale.paymentMode?.toUpperCase() || 'CASH'}
-                        </span>
-                        {isCancelledStatus && (
+                        <h1 className="text-sm text-gray-500 font-bold font-mono">
+                            {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString() : 'N/A'}
+                        </h1>
+                        {isCancelledStatus ? (
                             <span className="text-[10px] font-mono bg-red-100 text-red-600 px-2 py-1 rounded-full">
                                 ⚠️ Cancelled
                             </span>
+                        ) : (
+                            <span className={`text-[11px] font-semibold tracking-wide px-2.5 py-1 rounded-full ${statusColor}`}>
+                                {statusLabel}
+                            </span>
                         )}
+                        <span className="text-[10px] font-mono bg-gray-100 px-2 py-1 rounded-full text-gray-600">
+                            {sale.paymentMode?.toUpperCase() || 'CASH'}
+                        </span>
+
                         {isEditing && (
                             <span className="text-[10px] font-mono bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
                                 ✏️ Editing

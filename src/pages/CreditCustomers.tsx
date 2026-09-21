@@ -6,6 +6,7 @@ import {
     createCustomer,
     updateCustomer,
     deleteCustomer,
+    getCustomerById
 } from "../api/customerApi";
 
 interface CustomerCredit {
@@ -22,7 +23,7 @@ interface CustomerCredit {
     creditLimit: number;
     creditBalance: number;
     availableCredit: number;
-    postalCode : string;
+    postalCode: string;
     isActive: boolean;
     isBlocked: boolean;
     totalPurchases: number;
@@ -69,6 +70,18 @@ export default function CreditCustomers() {
     const [customerTypeFilter, setCustomerTypeFilter] = useState<string>("ALL");
     const [minCreditLimit, setMinCreditLimit] = useState<number>(0);
 
+
+
+    const [deleteTarget, setDeleteTarget] = useState<CustomerCredit | null>(null);
+    const [deleteConfirmText, setDeleteConfirmText] = useState("");
+    const [deleting, setDeleting] = useState(false);
+    const [deleteDetails, setDeleteDetails] = useState<{
+        sales: number;
+        ledgerEntries: number;
+        payments: number;
+    } | null>(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -86,6 +99,71 @@ export default function CreditCustomers() {
             setLoading(false);
         }
     };
+
+
+    const openDeleteModal = async (customer: CustomerCredit) => {
+        setDeleteTarget(customer);
+        setDeleteConfirmText("");
+        setDeleteDetails(null);
+        setLoadingDetails(true);
+
+        try {
+            const full = await getCustomerById(customer.id);
+
+            // Full customer detail returns Sales array; ledger entries via the API wrapper
+            const salesCount = full.sales?.length || 0;
+            const ledgerCount = full.recentLedgerEntries?.length || 0;
+
+            // Quotations not available from getCustomerById — we'll show as unknown
+            setDeleteDetails({
+                sales: salesCount,
+                ledgerEntries: ledgerCount,
+                payments: 0,
+            });
+        } catch (err) {
+            console.error("Failed to fetch customer details", err);
+            setDeleteDetails({ sales: 0, ledgerEntries: 0, payments: 0 });
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+
+        if (deleteConfirmText.trim() !== deleteTarget.name) {
+            alert("Customer name does not match. Please type it exactly.");
+            return;
+        }
+
+        try {
+            setDeleting(true);
+            const result = await deleteCustomer(deleteTarget.id);
+
+            alert(
+                `Customer "${deleteTarget.name}" deleted.\n\n` +
+                `Records removed:\n` +
+                `• ${result?.deleted?.sales ?? 0} sales\n` +
+                `• ${result?.deleted?.payments ?? 0} payments\n` +
+                `• ${result?.deleted?.ledgerEntries ?? 0} ledger entries\n`
+            );
+
+            setDeleteTarget(null);
+            setDeleteConfirmText("");
+            setDeleteDetails(null);
+            await load();
+        } catch (error: any) {
+            alert(
+                error?.response?.data?.message ||
+                error?.message ||
+                "Failed to delete customer"
+            );
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+
 
     // Filter customers
     const filteredCustomers = customers.filter((c) => {
@@ -266,22 +344,7 @@ export default function CreditCustomers() {
         }
     };
 
-    // ✅ Handle delete customer
-    const handleDeleteCustomer = async (customer: CustomerCredit) => {
-        if (!confirm(`Are you sure you want to delete ${customer.name}?`)) return;
 
-        try {
-            await deleteCustomer(customer.id);
-            alert("Customer deleted successfully");
-            await load();
-        } catch (error: any) {
-            alert(
-                error?.response?.data?.message ||
-                error?.message ||
-                "Failed to delete customer"
-            );
-        }
-    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -474,7 +537,7 @@ export default function CreditCustomers() {
                         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
 
                             {/* NAME & INFO */}
-                            <div 
+                            <div
                                 className="flex-1 flex items-center gap-3 min-w-0 cursor-pointer"
                                 onClick={() => navigate(`/credit-customers/${c.id}`)}
                             >
@@ -558,7 +621,7 @@ export default function CreditCustomers() {
                                     Edit
                                 </button>
                                 <button
-                                    onClick={() => handleDeleteCustomer(c)}
+                                    onClick={() => openDeleteModal(c)}
                                     className="flex-1 lg:flex-none px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium text-[12px] cursor-pointer transition"
                                 >
                                     Delete
@@ -898,6 +961,131 @@ export default function CreditCustomers() {
                             </button>
                         </div>
 
+                    </div>
+                </div>
+            )}
+
+
+            {deleteTarget && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl space-y-4 my-8">
+                        {/* Header */}
+                        <div className="p-5 border-b border-black/5 flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-lg shrink-0">
+                                ⚠️
+                            </div>
+                            <div className="flex-1">
+                                <h2 className="text-lg font-semibold text-[#14181C]">
+                                    Delete Customer
+                                </h2>
+                                <p className="text-[12px] text-black/50 mt-0.5">
+                                    This action cannot be undone
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setDeleteTarget(null);
+                                    setDeleteConfirmText("");
+                                }}
+                                disabled={deleting}
+                                className="text-black/30 hover:text-black/60 disabled:opacity-40"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="px-5 space-y-4">
+                            {/* Customer card */}
+                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                                <p className="text-[11px] font-semibold text-black/40 uppercase tracking-widest">
+                                    Customer
+                                </p>
+                                <p className="font-medium text-[14px] mt-0.5">
+                                    {deleteTarget.name}
+                                </p>
+                                <p className="text-[12px] font-mono text-black/50">
+                                    {deleteTarget.phone}
+                                </p>
+                            </div>
+
+                            {/* Warning */}
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                                <p className="text-[13px] text-red-800 font-medium">
+                                    All records related to this customer will be permanently deleted:
+                                </p>
+
+                                {loadingDetails ? (
+                                    <p className="text-[12px] text-red-700/70 mt-2">
+                                        Loading related records…
+                                    </p>
+                                ) : deleteDetails ? (
+                                    <ul className="mt-2 space-y-1 text-[12px] text-red-700">
+                                        <li>
+                                            • <strong>{deleteDetails.sales}</strong> sales invoice
+                                            {deleteDetails.sales === 1 ? "" : "s"}
+                                        </li>
+                                        <li>
+                                            • All sale items, payments and returns for those invoices
+                                        </li>
+                                        <li>
+                                            • <strong>{deleteDetails.ledgerEntries}</strong> customer
+                                            ledger entr
+                                            {deleteDetails.ledgerEntries === 1 ? "y" : "ies"}
+                                        </li>
+
+                                    </ul>
+                                ) : (
+                                    <p className="text-[12px] text-red-700/70 mt-2">
+                                        Related records could not be counted, but all of them will be removed.
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Type-to-confirm */}
+                            <div>
+                                <label className="text-[12px] font-medium text-black/70 block mb-1.5">
+                                    Type the customer name{" "}
+                                    <span className="font-mono font-bold text-red-600">
+                                        {deleteTarget.name}
+                                    </span>{" "}
+                                    to confirm:
+                                </label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    placeholder="Type exact name here…"
+                                    autoFocus
+                                    disabled={deleting}
+                                    className="w-full border border-black/10 bg-white rounded-xl p-3 text-[14px] outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-400 transition disabled:opacity-60"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-5 border-t border-black/5 flex gap-2 justify-end">
+                            <button
+                                onClick={() => {
+                                    setDeleteTarget(null);
+                                    setDeleteConfirmText("");
+                                }}
+                                disabled={deleting}
+                                className="px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] transition disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={
+                                    deleting ||
+                                    deleteConfirmText.trim() !== deleteTarget.name
+                                }
+                                className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-[14px] transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {deleting ? "Deleting…" : "Delete permanently"}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
