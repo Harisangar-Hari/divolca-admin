@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../../store/toastStore";
 import {
@@ -206,49 +206,219 @@ export default function CustomerReport() {
 
     const exportDetails = () => {
         try {
-            const rows = filteredInvoices.map((r) => ({
-                Customer: r.CustomerName,
-                Phone: r.CustomerPhone,
-                Date: new Date(r.InvoiceDate).toLocaleDateString("en-GB"),
-                Type: r.PaymentMode.toUpperCase(),
-                "Invoice No": r.InvoiceNumber,
-                Amount: r.TotalAmount,
-                "Pending Amount": r.BalanceAmount,
-                Days: r.AgeDays,
-                Bucket: r.Bucket,
-            }));
+            // Group invoices by customer
+            const groups = new Map<string, typeof filteredInvoices>();
+            filteredInvoices.forEach((inv) => {
+                const key = inv.CustomerName || "Walk-in";
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(inv);
+            });
 
+            const rows: any[] = [];
+            // Track which rows need special styling
+            const styleMap: { [rowIndex: number]: any } = {};
+
+            let grandTotalAmount = 0;
+            let grandTotalPending = 0;
+
+            // ── Styles ──────────────────────────────────────────────
+            const headingStyle = {
+                font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+                fill: { fgColor: { rgb: "0B6E4F" } }, // green header
+                alignment: { horizontal: "left", vertical: "center" },
+                border: {
+                    top: { style: "thin", color: { rgb: "000000" } },
+                    bottom: { style: "thin", color: { rgb: "000000" } },
+                },
+            };
+
+            const subtotalLabelStyle = {
+                font: { bold: true, color: { rgb: "000000" } },
+                fill: { fgColor: { rgb: "FFF8E1" } }, // soft amber
+                alignment: { horizontal: "left" },
+            };
+
+            const subtotalValueStyle = {
+                font: { bold: true, color: { rgb: "C00000" } }, // ✅ RED
+                fill: { fgColor: { rgb: "FFF8E1" } },
+                alignment: { horizontal: "right" },
+                numFmt: "#,##0.00",
+            };
+
+            const grandLabelStyle = {
+                font: { bold: true, sz: 12, color: { rgb: "FFFFFF" } },
+                fill: { fgColor: { rgb: "14181C" } },
+                alignment: { horizontal: "left", vertical: "center" },
+            };
+
+            const grandValueStyle = {
+                font: { bold: true, sz: 12, color: { rgb: "FFD700" } }, // gold on dark
+                fill: { fgColor: { rgb: "14181C" } },
+                alignment: { horizontal: "right" },
+                numFmt: "#,##0.00",
+            };
+
+            // ── Build rows ───────────────────────────────────────────
+            groups.forEach((invoices, customerName) => {
+                let customerAmount = 0;
+                let customerPending = 0;
+
+                // Customer heading row
+                const headingIndex = rows.length;
+                rows.push({
+                    Customer: customerName,
+                    Phone: invoices[0]?.CustomerPhone || "",
+                    Date: "",
+                    Type: "",
+                    "Invoice No": "",
+                    Amount: "",
+                    "Pending Amount": "",
+                    Days: "",
+                    Bucket: "",
+                });
+                styleMap[headingIndex] = { type: "heading" };
+
+                // Invoices
+                invoices.forEach((r) => {
+                    customerAmount += r.TotalAmount;
+                    customerPending += r.BalanceAmount;
+
+                    rows.push({
+                        Customer: "",
+                        Phone: "",
+                        Date: new Date(r.InvoiceDate).toLocaleDateString("en-GB"),
+                        Type: r.PaymentMode.toUpperCase(),
+                        "Invoice No": r.InvoiceNumber,
+                        Amount: r.TotalAmount,
+                        "Pending Amount": r.BalanceAmount,
+                        Days: r.AgeDays,
+                        Bucket: r.Bucket,
+                    });
+                });
+
+                // ✅ Customer subtotal row
+                const subtotalIndex = rows.length;
+                rows.push({
+                    Customer: `${customerName} TOTAL`,
+                    Phone: "",
+                    Date: "",
+                    Type: "",
+                    "Invoice No": `${invoices.length} invoice${invoices.length === 1 ? "" : "s"
+                        }`,
+                    Amount: Number(customerAmount.toFixed(2)),
+                    "Pending Amount": Number(customerPending.toFixed(2)),
+                    Days: "",
+                    Bucket: "",
+                });
+                styleMap[subtotalIndex] = { type: "subtotal" };
+
+                // ✅ Blank spacer row after each customer total
+                rows.push({
+                    Customer: "",
+                    Phone: "",
+                    Date: "",
+                    Type: "",
+                    "Invoice No": "",
+                    Amount: "",
+                    "Pending Amount": "",
+                    Days: "",
+                    Bucket: "",
+                });
+
+                grandTotalAmount += customerAmount;
+                grandTotalPending += customerPending;
+            });
+
+            // Remove trailing spacer before grand total
+            if (
+                rows.length > 0 &&
+                rows[rows.length - 1].Customer === "" &&
+                rows[rows.length - 1]["Invoice No"] === ""
+            ) {
+                rows.pop();
+            }
+
+            // Grand total row
+            const grandIndex = rows.length;
             rows.push({
-                Customer: "TOTAL",
+                Customer: "GRAND TOTAL",
                 Phone: "",
                 Date: "",
                 Type: "",
                 "Invoice No": `${filteredInvoices.length} invoices`,
-                Amount: filteredInvoiceTotals.TotalAmount,
-                "Pending Amount": filteredInvoiceTotals.BalanceAmount,
-                Days: 0,
+                Amount: Number(grandTotalAmount.toFixed(2)),
+                "Pending Amount": Number(grandTotalPending.toFixed(2)),
+                Days: "",
                 Bucket: "",
             });
+            styleMap[grandIndex] = { type: "grand" };
 
+            // ── Create worksheet ─────────────────────────────────────
             const ws = XLSX.utils.json_to_sheet(rows);
+
+            // Column widths
             ws["!cols"] = [
-                { wch: 28 }, { wch: 15 }, { wch: 12 }, { wch: 12 },
-                { wch: 20 }, { wch: 14 }, { wch: 16 }, { wch: 8 }, { wch: 10 },
+                { wch: 32 }, // Customer
+                { wch: 15 }, // Phone
+                { wch: 12 }, // Date
+                { wch: 12 }, // Type
+                { wch: 20 }, // Invoice No
+                { wch: 14 }, // Amount
+                { wch: 16 }, // Pending
+                { wch: 8 },  // Days
+                { wch: 10 }, // Bucket
             ];
 
+            // ── Apply styles ─────────────────────────────────────────
+            Object.keys(ws).forEach((cellKey) => {
+                if (cellKey.startsWith("!")) return;
+
+                const rowNum = Number(cellKey.replace(/[A-Z]+/g, ""));
+                const colLetter = cellKey.replace(/[0-9]+/g, "");
+                const rowDataIndex = rowNum - 2;
+                const styleType = styleMap[rowDataIndex];
+                if (!styleType) return;
+
+                // Determine cell's column key
+                const header = [
+                    "Customer", "Phone", "Date", "Type",
+                    "Invoice No", "Amount", "Pending Amount",
+                    "Days", "Bucket",
+                ];
+                const colIndex = colLetter.charCodeAt(0) - 65;
+                const colName = header[colIndex];
+
+                const isNumberCell =
+                    colName === "Amount" || colName === "Pending Amount";
+
+                if (styleType.type === "heading") {
+                    ws[cellKey].s = headingStyle;
+                } else if (styleType.type === "subtotal") {
+                    ws[cellKey].s = isNumberCell
+                        ? subtotalValueStyle
+                        : subtotalLabelStyle;
+                } else if (styleType.type === "grand") {
+                    ws[cellKey].s = isNumberCell
+                        ? grandValueStyle
+                        : grandLabelStyle;
+                }
+            });
+
+            // ── Write file ───────────────────────────────────────────
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Outstanding Invoices");
 
             XLSX.writeFile(
                 wb,
-                `Outstanding_Invoices_${new Date().toISOString().split("T")[0]}.xlsx`
+                `Outstanding_Invoices_${new Date().toISOString().split("T")[0]
+                }.xlsx`
             );
             showToast("Exported successfully!", "success");
-        } catch {
+        } catch (err) {
+            console.error(err);
             showToast("Failed to export", "error");
         }
     };
-
     const fmt = (n: number) =>
         n === 0
             ? "—"

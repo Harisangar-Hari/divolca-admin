@@ -31,6 +31,7 @@ import PayCredit from "../pages/PayCredit";
 import ReportsPage from "../pages/reports/ReportsPage";
 import Users from "../pages/Users";
 import Returns from "../pages/Returns";
+import Quotations from "../pages/Quotations";
 
 export default function AppRoutes() {
   return (
@@ -237,6 +238,15 @@ export default function AppRoutes() {
           element={
             <PermissionRoute required="canManageUsers">
               <Users />
+            </PermissionRoute>
+          }
+        />
+
+        <Route
+          path="quotations"
+          element={
+            <PermissionRoute required="canViewSales">
+              <Quotations />
             </PermissionRoute>
           }
         />

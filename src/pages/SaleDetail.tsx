@@ -5,6 +5,7 @@ import { getSaleById, cancelSale, editSale, updateSaleItem, addSaleItem, removeS
 import { getProducts } from "../api/productsApi";
 import { printA4Receipt, downloadA4ReceiptPdf, type ReceiptData } from "../utils/printA4Receipt";
 import { useToast } from "../store/toastStore";
+import { usePermissions } from "../hooks/usePermissions";
 
 
 
@@ -22,6 +23,14 @@ export default function SaleDetail() {
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [showSearchResults, setShowSearchResults] = useState(false);
+
+
+    const { can } = usePermissions();
+
+    const canEditSales = can("canEditSales");
+    const canDeleteSales = can("canDeleteSales");
+    const canManageCredit = can("canManageCreditPayments");
+    console.log(canManageCredit)
 
     const [editedItems, setEditedItems] = useState<{
         [key: string]: {
@@ -352,7 +361,7 @@ export default function SaleDetail() {
     const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
     const isReturned = () => sale?.status === 2 || sale?.status === "Fully Returned" || sale?.status === "FULLY_RETURNED";
     const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
-    const isPartial = () =>sale?.status === 1 || sale?.status === "Partially Returned";
+    const isPartial = () => sale?.status === 1 || sale?.status === "Partially Returned";
 
     const getStatus = () => {
         if (isCancelled()) return "Cancelled";
@@ -537,7 +546,12 @@ export default function SaleDetail() {
     const payments = sale.payments || [];
     const hasPayments = payments.length > 0;
 
-    const canEdit = !isCancelledStatus && !isReturnedStatus && sale.status !== 2 && sale.status !== 4;
+    const canEdit =
+        canEditSales &&
+        !isCancelledStatus &&
+        !isReturnedStatus &&
+        sale.status !== 2 &&
+        sale.status !== 4;
 
     return (
         <div className="min-h-screen bg-[#EEF1EF] p-4 md:p-6 font-sans text-[#14181C]">
@@ -610,7 +624,7 @@ export default function SaleDetail() {
                             </button>
                         )}
 
-                        {!isReturnedStatus && !isCancelledStatus && !isEditing && (
+                        {canDeleteSales && !isReturnedStatus && !isCancelledStatus && !isEditing && (
                             <button
                                 onClick={handleCancel}
                                 className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 cursor-pointer transition shadow-sm"

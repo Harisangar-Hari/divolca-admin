@@ -206,3 +206,8 @@ export const addSaleItem = async (saleId: string, data: {
     const res = await api.post(`/sales/item/${saleId}`, data);
     return res.data;
 };
+
+export const checkoutSale = async (data: any) => {
+    const res = await api.post("/sales/checkout", data);
+    return res.data;
+};

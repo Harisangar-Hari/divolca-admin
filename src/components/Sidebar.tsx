@@ -14,6 +14,7 @@ import {
   UserCog,
   FileCheck,
   RotateCcw,
+  ScrollText
 } from "lucide-react";
 
 import logo from "../assets/logo.jpeg";
@@ -77,6 +78,12 @@ export default function Sidebar({ close }: { close?: () => void }) {
       permission: "canViewSales",
     },
     {
+      to: "/quotations",
+      label: "Quotations",
+      icon: <ScrollText size={18} />,
+      permission: "canViewSales",
+    },
+    {
       to: "/credit-customers",
       label: "Credit Customers",
       icon: <Users size={18} />,
@@ -131,11 +138,11 @@ export default function Sidebar({ close }: { close?: () => void }) {
       permission: "canViewSupplierCheques",
     },
     {
-    to: "/returns",
-    label: "Returns",
-    icon: <RotateCcw size={18} />,
-    permission: "canViewSales",
-},
+      to: "/returns",
+      label: "Returns",
+      icon: <RotateCcw size={18} />,
+      permission: "canViewSales",
+    },
     {
       to: "/users",
       label: "Users",
