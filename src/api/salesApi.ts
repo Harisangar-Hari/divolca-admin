@@ -26,6 +26,14 @@ export const getSales = async () => {
             phone: s.Customers.Phone,
         } : null,
 
+        // ✅ NEW — product names + barcodes for search
+        items: (s.SaleItems || []).map((it: any) => ({
+            productId: it.ProductId,
+            productName: it.Products?.Name || "",
+            productBarcode: it.Products?.Barcode || "",
+            productSku: it.Products?.SKU || "",
+        })),
+
         itemsCount: s.SaleItems?.length ?? 0
     }));
 };
@@ -209,5 +217,25 @@ export const addSaleItem = async (saleId: string, data: {
 
 export const checkoutSale = async (data: any) => {
     const res = await api.post("/sales/checkout", data);
+    return res.data;
+};
+
+
+// =========================
+// DELIVERY COLLECTION
+// =========================
+export const recordDeliveryCollection = async (
+    saleId: string,
+    data: {
+        deliveryDiscountPercent: number;
+        cashCollected: number;
+        collectedBy?: string;
+        notes?: string;
+    }
+) => {
+    const res = await api.post(
+        `/sales/${saleId}/delivery-collection`,
+        data
+    );
     return res.data;
 };

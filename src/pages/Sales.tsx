@@ -32,7 +32,15 @@ export default function Sales() {
     const matchSearch =
       !q ||
       (s.invoiceNumber || "").toLowerCase().includes(q) ||
-      (s.customer?.name || "").toLowerCase().includes(q);
+      (s.customer?.name || "").toLowerCase().includes(q) ||
+      (s.customer?.phone || "").includes(q) ||
+      // ✅ Search product names / barcodes / SKUs inside the sale
+      (s.items || []).some(
+        (it: any) =>
+          (it.productName || "").toLowerCase().includes(q) ||
+          (it.productBarcode || "").includes(q) ||
+          (it.productSku || "").toLowerCase().includes(q)
+      );
 
     const matchDate = date
       ? new Date(s.createdAt).toISOString().split("T")[0] === date
@@ -121,7 +129,7 @@ export default function Sales() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search invoice number…"
+              placeholder="Invoice, customer, or product name…"
               className="w-full border border-black/10 bg-white p-3 pl-10 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition shadow-sm"
             />
           </div>
@@ -188,6 +196,32 @@ export default function Sales() {
                   <p className="text-[13px] text-black/40 mt-1">
                     <span>{s.customer.name}</span>
                   </p>
+
+                  {(() => {
+                    const q = search.toLowerCase().trim();
+                    if (!q) return null;
+
+                    const matchedItem = (s.items || []).find(
+                      (it: any) =>
+                        (it.productName || "").toLowerCase().includes(q) ||
+                        (it.productBarcode || "").includes(q) ||
+                        (it.productSku || "").toLowerCase().includes(q)
+                    );
+
+                    // Don't show if it matched by invoice/customer instead
+                    const matchedByOther =
+                      (s.invoiceNumber || "").toLowerCase().includes(q) ||
+                      (s.customer?.name || "").toLowerCase().includes(q) ||
+                      (s.customer?.phone || "").includes(q);
+
+                    if (!matchedItem || matchedByOther) return null;
+
+                    return (
+                      <span className="text-[10px] font-mono bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full mt-1 inline-block">
+                        📦 {matchedItem.productName}
+                      </span>
+                    );
+                  })()}
 
                   {/* ✅ Show payment mode badge */}
                   {s.paymentMode && (

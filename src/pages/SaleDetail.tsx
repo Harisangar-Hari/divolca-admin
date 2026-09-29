@@ -1,7 +1,7 @@
 // src/pages/sales/SaleDetail.tsx
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSaleById, cancelSale, editSale, updateSaleItem, addSaleItem, removeSaleItem } from "../api/salesApi";
+import { getSaleById, cancelSale, editSale, updateSaleItem, addSaleItem, removeSaleItem, recordDeliveryCollection } from "../api/salesApi";
 import { getProducts } from "../api/productsApi";
 import { printA4Receipt, downloadA4ReceiptPdf, type ReceiptData } from "../utils/printA4Receipt";
 import { useToast } from "../store/toastStore";
@@ -25,12 +25,24 @@ export default function SaleDetail() {
     const [showSearchResults, setShowSearchResults] = useState(false);
 
 
+    const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+    const [deliveryPercent, setDeliveryPercent] = useState(3);
+    const [deliveryCash, setDeliveryCash] = useState(0);
+    const [deliveryCollectedBy, setDeliveryCollectedBy] = useState("");
+    const [deliveryNotes, setDeliveryNotes] = useState("");
+    const [deliverySubmitting, setDeliverySubmitting] = useState(false);
+
+
+
+
     const { can } = usePermissions();
 
     const canEditSales = can("canEditSales");
     const canDeleteSales = can("canDeleteSales");
     const canManageCredit = can("canManageCreditPayments");
     console.log(canManageCredit)
+
+
 
     const [editedItems, setEditedItems] = useState<{
         [key: string]: {
@@ -39,6 +51,40 @@ export default function SaleDetail() {
             discountPercent?: number;
         }
     }>({});
+
+    const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
+    const isReturned = () => sale?.status === 2 || sale?.status === "Fully Returned" || sale?.status === "FULLY_RETURNED";
+    const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
+    const isPartial = () => sale?.status === 1 || sale?.status === "Partially Returned";
+
+    const getStatus = () => {
+        if (isCancelled()) return "Cancelled";
+        if (isReturned()) return "Fully Returned";
+        if (isPartial()) return "Partially Returned";
+        if (isCompleted()) return "Completed";
+        if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "Partial";
+        if (sale?.balanceAmount === 0) return "Paid";
+        return "Unpaid";
+    };
+
+    const getStatusColor = () => {
+        if (isCancelled()) return "bg-gray-100 text-gray-600";
+        if (isReturned()) return "bg-red-50 text-red-600";
+        if (isCompleted()) return "bg-emerald-50 text-[#0B6E4F]";
+        if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "bg-amber-50 text-amber-700";
+        if (sale?.balanceAmount === 0) return "bg-emerald-50 text-[#0B6E4F]";
+        return "bg-red-50 text-red-600";
+    };
+    const statusLabel = getStatus();
+    const statusColor = getStatusColor();
+    const isCancelledStatus = isCancelled();
+    const isReturnedStatus = isReturned();
+
+    const canCollectDelivery =
+        canManageCredit &&
+        !isCancelledStatus &&
+        !isReturnedStatus &&
+        (sale?.balanceAmount || 0) > 0;
 
     const [editedInvoiceDiscount, setEditedInvoiceDiscount] = useState<number>(0);
     const [isDiscountManuallySet, setIsDiscountManuallySet] = useState(false);
@@ -358,29 +404,9 @@ export default function SaleDetail() {
     };
 
     // Status helper functions
-    const isCancelled = () => sale?.status === 4 || sale?.status === "Cancelled";
-    const isReturned = () => sale?.status === 2 || sale?.status === "Fully Returned" || sale?.status === "FULLY_RETURNED";
-    const isCompleted = () => sale?.status === 3 || sale?.status === "Completed";
-    const isPartial = () => sale?.status === 1 || sale?.status === "Partially Returned";
 
-    const getStatus = () => {
-        if (isCancelled()) return "Cancelled";
-        if (isReturned()) return "Fully Returned";
-        if (isPartial()) return "Partially Returned";
-        if (isCompleted()) return "Completed";
-        if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "Partial";
-        if (sale?.balanceAmount === 0) return "Paid";
-        return "Unpaid";
-    };
 
-    const getStatusColor = () => {
-        if (isCancelled()) return "bg-gray-100 text-gray-600";
-        if (isReturned()) return "bg-red-50 text-red-600";
-        if (isCompleted()) return "bg-emerald-50 text-[#0B6E4F]";
-        if (sale?.balanceAmount > 0 && sale?.paidAmount > 0) return "bg-amber-50 text-amber-700";
-        if (sale?.balanceAmount === 0) return "bg-emerald-50 text-[#0B6E4F]";
-        return "bg-red-50 text-red-600";
-    };
+
 
     const handleCancel = async () => {
         if (!sale) return;
@@ -533,10 +559,7 @@ export default function SaleDetail() {
         );
     }
 
-    const statusLabel = getStatus();
-    const statusColor = getStatusColor();
-    const isCancelledStatus = isCancelled();
-    const isReturnedStatus = isReturned();
+
 
     const totalItemDiscount = (sale.items ?? []).reduce((acc: number, item: any) => {
         return acc + (Number(item.discount || 0) * Number(item.quantity || 1));
@@ -552,6 +575,82 @@ export default function SaleDetail() {
         !isReturnedStatus &&
         sale.status !== 2 &&
         sale.status !== 4;
+
+
+    const openDeliveryModal = () => {
+        if (!sale) return;
+        const total = sale.totalAmount || 0;
+        const discount = Math.round(total * 0.03 * 100) / 100;
+        const newTotal = total - discount;
+
+        setDeliveryPercent(3);
+        setDeliveryCash(newTotal);
+        setDeliveryCollectedBy("");
+        setDeliveryNotes("");
+        setShowDeliveryModal(true);
+    };
+
+    const handleDeliveryPercentChange = (percent: number) => {
+        setDeliveryPercent(percent);
+        if (!sale) return;
+        const total = sale.totalAmount || 0;
+        const discount = Math.round(total * (percent / 100) * 100) / 100;
+        const newTotal = total - discount;
+        setDeliveryCash(newTotal);
+    };
+
+    const handleRecordDelivery = async () => {
+        if (!sale) return;
+
+        if (deliveryPercent < 0 || deliveryPercent > 100) {
+            showToast("Invalid discount percent", "error");
+            return;
+        }
+
+        const discountAmount =
+            Math.round(
+                (sale.totalAmount || 0) * (deliveryPercent / 100) * 100
+            ) / 100;
+        const newTotal = (sale.totalAmount || 0) - discountAmount;
+
+        if (deliveryCash <= 0) {
+            showToast("Enter cash collected", "error");
+            return;
+        }
+        if (deliveryCash > newTotal) {
+            showToast(
+                `Cash cannot exceed discounted total (Rs ${newTotal.toFixed(2)})`,
+                "error"
+            );
+            return;
+        }
+
+        try {
+            setDeliverySubmitting(true);
+            await recordDeliveryCollection(sale.id, {
+                deliveryDiscountPercent: deliveryPercent,
+                cashCollected: deliveryCash,
+                collectedBy: deliveryCollectedBy.trim() || undefined,
+                notes: deliveryNotes.trim() || undefined,
+            });
+
+            showToast(
+                `Delivery collection recorded — Rs ${deliveryCash.toFixed(2)}`,
+                "success"
+            );
+
+            setShowDeliveryModal(false);
+            await loadSale();
+        } catch (err: any) {
+            showToast(
+                err?.response?.data?.message ||
+                "Failed to record delivery collection",
+                "error"
+            );
+        } finally {
+            setDeliverySubmitting(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#EEF1EF] p-4 md:p-6 font-sans text-[#14181C]">
@@ -621,6 +720,16 @@ export default function SaleDetail() {
                                 className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition"
                             >
                                 Pay Credit
+                            </button>
+
+
+                        )}
+                        {canCollectDelivery && !isEditing && (
+                            <button
+                                onClick={openDeliveryModal}
+                                className="text-[13px] font-medium px-3.5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer transition shadow-sm"
+                            >
+                                🚚 Delivery Collection
                             </button>
                         )}
 
@@ -1007,6 +1116,267 @@ export default function SaleDetail() {
                 )}
 
             </div>
+
+            {/* ================= DELIVERY COLLECTION MODAL ================= */}
+            {showDeliveryModal && sale && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-xl flex flex-col">
+                        <div className="p-5 border-b border-black/5 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-semibold text-[#14181C]">
+                                    Delivery Collection
+                                </h2>
+                                <p className="text-[12px] text-black/40 mt-0.5 font-mono">
+                                    {sale.invoiceNumber}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowDeliveryModal(false)}
+                                disabled={deliverySubmitting}
+                                className="text-black/30 hover:text-black/60 text-lg leading-none"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            {/* Current total */}
+                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-black/60">
+                                        Current Total
+                                    </span>
+                                    <span className="font-mono font-semibold">
+                                        Rs{" "}
+                                        {Number(
+                                            sale.totalAmount || 0
+                                        ).toLocaleString()}
+                                    </span>
+                                </div>
+                                {(sale.paidAmount || 0) > 0 && (
+                                    <div className="flex justify-between text-sm mt-1">
+                                        <span className="text-black/60">
+                                            Already Paid
+                                        </span>
+                                        <span className="font-mono text-emerald-600">
+                                            Rs{" "}
+                                            {Number(
+                                                sale.paidAmount || 0
+                                            ).toLocaleString()}
+                                        </span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between text-sm mt-1 pt-1 border-t border-gray-200">
+                                    <span className="text-black/60 font-medium">
+                                        Outstanding
+                                    </span>
+                                    <span className="font-mono font-bold text-red-600">
+                                        Rs{" "}
+                                        {Number(
+                                            sale.balanceAmount || 0
+                                        ).toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Discount % — quick buttons + custom */}
+                            <div>
+                                <label className="text-[13px] text-black/60 font-medium block mb-1.5">
+                                    Delivery Discount (%)
+                                </label>
+                                <div className="flex gap-2 mb-2">
+                                    {[3, 5].map((p) => (
+                                        <button
+                                            key={p}
+                                            type="button"
+                                            onClick={() =>
+                                                handleDeliveryPercentChange(p)
+                                            }
+                                            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition border ${deliveryPercent === p
+                                                    ? "bg-[#0B6E4F] text-white border-[#0B6E4F]"
+                                                    : "bg-white text-black/60 border-black/10 hover:bg-gray-50"
+                                                }`}
+                                        >
+                                            {p}%
+                                        </button>
+                                    ))}
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        step="0.1"
+                                        value={deliveryPercent}
+                                        onChange={(e) =>
+                                            handleDeliveryPercentChange(
+                                                Number(e.target.value) || 0
+                                            )
+                                        }
+                                        className="w-20 text-center border border-black/10 bg-white rounded-xl py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                    />
+                                </div>
+
+                                {/* Discount computation preview */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-[12px] text-blue-900 space-y-0.5">
+                                    <div className="flex justify-between">
+                                        <span>Discount amount</span>
+                                        <span className="font-mono">
+                                            −Rs{" "}
+                                            {(
+                                                Math.round(
+                                                    Number(
+                                                        sale.totalAmount || 0
+                                                    ) *
+                                                    (deliveryPercent / 100) *
+                                                    100
+                                                ) / 100
+                                            ).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between font-semibold border-t border-blue-200 pt-1 mt-1">
+                                        <span>New Total</span>
+                                        <span className="font-mono">
+                                            Rs{" "}
+                                            {(
+                                                Number(sale.totalAmount || 0) -
+                                                Math.round(
+                                                    Number(
+                                                        sale.totalAmount || 0
+                                                    ) *
+                                                    (deliveryPercent / 100) *
+                                                    100
+                                                ) /
+                                                100
+                                            ).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Cash collected */}
+                            <div>
+                                <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                    Cash Collected
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={deliveryCash || ""}
+                                    onChange={(e) =>
+                                        setDeliveryCash(Number(e.target.value))
+                                    }
+                                    placeholder="0.00"
+                                    className="w-full border border-black/10 bg-white rounded-xl px-3 py-2.5 font-mono text-lg font-bold outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                />
+                                <div className="flex justify-between items-center mt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const total =
+                                                sale.totalAmount || 0;
+                                            const discount =
+                                                Math.round(
+                                                    total *
+                                                    (deliveryPercent / 100) *
+                                                    100
+                                                ) / 100;
+                                            setDeliveryCash(total - discount);
+                                        }}
+                                        className="text-[11px] text-[#0B6E4F] font-medium hover:underline"
+                                    >
+                                        Set to new total
+                                    </button>
+                                    {deliveryCash > 0 && (
+                                        <span className="text-[11px] text-black/50">
+                                            Remaining:{" "}
+                                            <span className="font-mono font-semibold">
+                                                Rs{" "}
+                                                {Math.max(
+                                                    0,
+                                                    Number(
+                                                        sale.totalAmount || 0
+                                                    ) -
+                                                    Math.round(
+                                                        Number(
+                                                            sale.totalAmount || 0
+                                                        ) *
+                                                        (deliveryPercent /
+                                                            100) *
+                                                        100
+                                                    ) /
+                                                    100 -
+                                                    deliveryCash
+                                                ).toFixed(2)}
+                                            </span>
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Collected by */}
+                            <div>
+                                <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                    Collected By
+                                </label>
+                                <input
+                                    type="text"
+                                    value={deliveryCollectedBy}
+                                    onChange={(e) =>
+                                        setDeliveryCollectedBy(e.target.value)
+                                    }
+                                    placeholder="e.g. Delivery Team A"
+                                    className="w-full border border-black/10 bg-white rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition"
+                                />
+                            </div>
+
+                            {/* Notes */}
+                            <div>
+                                <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                    Notes (optional)
+                                </label>
+                                <textarea
+                                    value={deliveryNotes}
+                                    onChange={(e) =>
+                                        setDeliveryNotes(e.target.value)
+                                    }
+                                    rows={2}
+                                    placeholder="Any remarks…"
+                                    className="w-full border border-black/10 bg-white rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0B6E4F]/30 focus:border-[#0B6E4F] transition resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-5 border-t border-black/5 flex gap-2 justify-end">
+                            <button
+                                onClick={() => setShowDeliveryModal(false)}
+                                disabled={deliverySubmitting}
+                                className="px-4 py-2.5 bg-[#F3F6F4] hover:bg-[#E7ECE9] text-black/70 rounded-xl font-medium text-[14px] transition disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleRecordDelivery}
+                                disabled={
+                                    deliverySubmitting ||
+                                    deliveryCash <= 0 ||
+                                    deliveryCash >
+                                    Number(sale.totalAmount || 0) -
+                                    Math.round(
+                                        Number(sale.totalAmount || 0) *
+                                        (deliveryPercent / 100) *
+                                        100
+                                    ) /
+                                    100
+                                }
+                                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium text-[14px] transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {deliverySubmitting
+                                    ? "Recording…"
+                                    : "Record Collection"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
