@@ -39,8 +39,16 @@ export const getSalesReport = async (filters?: {
     startDate?: string;
     endDate?: string;
     paymentMode?: string;
+    includeCancelled?: boolean;   // ✅
 }) => {
-    const res = await api.get("/reports/sales", { params: filters });
+    const res = await api.get("/reports/sales", {
+        params: {
+            startDate: filters?.startDate,
+            endDate: filters?.endDate,
+            paymentMode: filters?.paymentMode,
+            includeCancelled: filters?.includeCancelled ? "true" : undefined,
+        },
+    });
     return res.data;
 };
 

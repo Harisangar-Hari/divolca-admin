@@ -73,6 +73,8 @@ export const getCustomerById = async (id: string) => {
         totalSpent: Number(res.data.TotalSpent || 0),
         createdAt: res.data.CreatedAt,
         updatedAt: res.data.UpdatedAt,
+        advanceBalance: Number(res.data.AdvanceBalance || 0),
+        pendingAdvance: Number(res.data.PendingAdvance || 0),
         lastPurchaseDate: res.data.LastPurchaseDate,
         lastPaymentDate: res.data.LastPaymentDate,
         sales: (res.data.Sales || []).map((s: any) => ({

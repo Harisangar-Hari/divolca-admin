@@ -301,19 +301,35 @@ export default function SupplierChequeDashboard() {
 
                 {/* Invoice rows */}
                 <div className="divide-y divide-black/5">
-                    {group.rows.map((r) => (
-                        <div
-                            key={r.id}
-                            className="flex justify-between items-center px-4 py-2.5 text-[13px]"
-                        >
-                            <span className="font-mono text-black/70">
-                                {r.invoice}
-                            </span>
-                            <span className="font-mono font-medium">
-                                Rs {Number(r.amount).toLocaleString()}
-                            </span>
-                        </div>
-                    ))}
+                    {group.rows.map((r) => {
+                        const isAdvance =
+                            !r.invoice || r.invoice === "-" || r.invoice === "N/A";
+                        return (
+                            <div
+                                key={r.id}
+                                className={`flex justify-between items-center px-4 py-2.5 text-[13px] ${isAdvance ? "bg-amber-50/40" : ""
+                                    }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    {isAdvance ? (
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                            Advance
+                                        </span>
+                                    ) : (
+                                        <span className="font-mono text-black/70">
+                                            {r.invoice}
+                                        </span>
+                                    )}
+                                </span>
+                                <span
+                                    className={`font-mono font-medium ${isAdvance ? "text-amber-700" : ""
+                                        }`}
+                                >
+                                    Rs {Number(r.amount).toLocaleString()}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );

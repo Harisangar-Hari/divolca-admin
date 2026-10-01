@@ -81,3 +81,15 @@ export const bounceChequeByReference = async (
     );
     return res.data;
 };
+
+export const recordChequeWithAmount = async (dto: {
+    customerId: string;
+    amount: number;
+    chequeNumber: string;
+    chequeDate: string;
+    notes?: string;
+    saleIds?: string[];
+}) => {
+    const res = await api.post("/sales/credit-cheques/with-amount", dto);
+    return res.data;
+};

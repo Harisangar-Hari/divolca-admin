@@ -66,6 +66,9 @@ export interface SupplierDetails {
     email?: string;
     address?: string;
 
+    advanceBalance: number;     // ✅ NEW
+    pendingAdvance: number;     // ✅ NEW
+
     purchases: SupplierPurchase[];
 }
 export interface SupplierPurchase {
@@ -79,43 +82,29 @@ export interface SupplierPurchase {
 export const getSupplierDetails = async (
     id: string
 ): Promise<SupplierDetails> => {
-
     const res = await api.get(`/suppliers/${id}`);
-
     const s = res.data;
 
-
     return {
-
         id: s.Id,
-
         name: s.Name,
-
         phone: s.Phone,
-
         email: s.Email,
-
         address: s.Address,
 
+        // ✅ NEW
+        advanceBalance: Number(s.AdvanceBalance || 0),
+        pendingAdvance: Number(s.PendingAdvance || 0),
 
         purchases: (s.purchases ?? []).map((p: any) => ({
-
             id: p.Id,
-
             invoiceNumber: p.InvoiceNumber,
-
             grandTotal: Number(p.GrandTotal ?? 0),
-
             paidAmount: Number(p.PaidAmount ?? 0),
-
             balanceAmount: Number(p.BalanceAmount ?? 0),
-
-            purchaseDate: p.PurchaseDate
-
-        }))
-
+            purchaseDate: p.PurchaseDate,
+        })),
     };
-
 };
 
 export interface SupplierLedgerResponse {

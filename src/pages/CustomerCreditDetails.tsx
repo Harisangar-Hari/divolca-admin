@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useToast } from "../store/toastStore";
 import { getCustomerById, getCustomerInvoices, getCustomerLedger, payCustomerCredit, type CustomerLedger } from "../api/customerApi";
-import { recordBulkCreditCheque } from "../api/creditChequeApi";
+import {  recordChequeWithAmount } from "../api/creditChequeApi";
 import { useNavigate } from "react-router-dom";
 
 interface Customer {
@@ -36,6 +36,9 @@ interface Customer {
     createdAt: string;
     updatedAt: string;
     lastPurchaseDate?: string;
+    advanceBalance?: any;
+    pendingAdvance?: any;
+
     lastPaymentDate?: string;
 }
 
@@ -60,6 +63,8 @@ export default function CustomerCreditDetails() {
     const [amount, setAmount] = useState<number | string>("");
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showCustomerDetails, setShowCustomerDetails] = useState(false);
+    const [chequeMode, setChequeMode] = useState<"auto" | "select">("auto");
+    const [chequeAmountInput, setChequeAmountInput] = useState(0);
 
 
 
@@ -141,16 +146,14 @@ export default function CustomerCreditDetails() {
         setPaymentMethod("cash");
         setSelectedInvoiceIds([]);
         setChequeNumber("");
+        setChequeMode("auto");         // ✅
+        setChequeAmountInput(0);       // ✅
         setChequeDate(new Date().toISOString().split("T")[0]);
         setChequeNote("");
     };
 
     // Handle cheque submission
     const handleRecordCheque = async () => {
-        if (selectedInvoiceIds.length === 0) {
-            showToast("Select at least one invoice", "error");
-            return;
-        }
         if (!chequeNumber.trim()) {
             showToast("Cheque number is required", "error");
             return;
@@ -159,18 +162,30 @@ export default function CustomerCreditDetails() {
             showToast("Cheque date is required", "error");
             return;
         }
+        if (chequeAmountInput <= 0) {
+            showToast("Enter a valid cheque amount", "error");
+            return;
+        }
+        if (chequeMode === "select" && selectedInvoiceIds.length === 0) {
+            showToast("Select at least one invoice", "error");
+            return;
+        }
 
         try {
             setChequeSubmitting(true);
-            await recordBulkCreditCheque({
-                saleIds: selectedInvoiceIds,
+
+            await recordChequeWithAmount({
+                customerId: id!,
+                amount: chequeAmountInput,
                 chequeNumber: chequeNumber.trim(),
                 chequeDate,
-                note: chequeNote.trim() || undefined,
+                notes: chequeNote.trim() || undefined,
+                saleIds:
+                    chequeMode === "select" ? selectedInvoiceIds : undefined,
             });
 
             showToast(
-                `Cheque recorded — Rs ${formatNumber(chequeTotal)} across ${selectedInvoiceIds.length} invoice(s)`,
+                `Cheque recorded — Rs ${formatNumber(chequeAmountInput)}`,
                 "success"
             );
 
@@ -186,7 +201,6 @@ export default function CustomerCreditDetails() {
             setChequeSubmitting(false);
         }
     };
-
 
     useEffect(() => {
         load();
@@ -470,6 +484,38 @@ export default function CustomerCreditDetails() {
                     </div>
                 </div>
 
+                {(customer.advanceBalance > 0 || customer.pendingAdvance > 0) && (
+                    <div className="grid grid-cols-2 gap-3">
+                        {customer.advanceBalance > 0 && (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+                                <p className="text-[10px] tracking-widest uppercase text-black/50 font-semibold">
+                                    Available Advance
+                                </p>
+                                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-emerald-700">
+                                    Rs {formatNumber(customer.advanceBalance)}
+                                </p>
+                                <p className="text-[10px] text-emerald-600 mt-0.5">
+                                    Ready to apply
+                                </p>
+                            </div>
+                        )}
+
+                        {customer.pendingAdvance > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
+                                <p className="text-[10px] tracking-widest uppercase text-black/50 font-semibold">
+                                    Pending Advance
+                                </p>
+                                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-amber-700">
+                                    Rs {formatNumber(customer.pendingAdvance)}
+                                </p>
+                                <p className="text-[10px] text-amber-600 mt-0.5">
+                                    Awaiting cheque clearance
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Additional Stats */}
                 <div className="grid grid-cols-3 gap-3">
                     <div className="bg-white rounded-xl p-3 shadow-sm border border-black/5 text-center">
@@ -680,121 +726,230 @@ export default function CustomerCreditDetails() {
                         {/* ================= CHEQUE TAB ================= */}
                         {paymentMethod === "cheque" && (
                             <div className="space-y-3">
-                                {/* Invoice picker */}
-                                <div>
-                                    <div className="flex justify-between items-center mb-1">
-                                        <label className="text-[13px] text-black/60 font-medium">
-                                            Select Invoices
-                                        </label>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const unpaid = invoices.filter(
-                                                    (i) => getNumber(i.BalanceAmount) > 0
-                                                );
-                                                const allSelected =
-                                                    selectedInvoiceIds.length ===
-                                                    unpaid.length;
-                                                setSelectedInvoiceIds(
-                                                    allSelected
-                                                        ? []
-                                                        : unpaid.map((i) => i.Id)
-                                                );
-                                            }}
-                                            className="text-xs text-[#4338CA] font-medium hover:underline"
-                                        >
-                                            {selectedInvoiceIds.length ===
-                                                invoices.filter(
-                                                    (i) => getNumber(i.BalanceAmount) > 0
-                                                ).length
-                                                ? "Clear All"
-                                                : "Select All"}
-                                        </button>
-                                    </div>
+                                {/* Mode toggle */}
+                                <div className="flex border border-gray-300 rounded-xl overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChequeMode("auto")}
+                                        className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition ${chequeMode === "auto"
+                                            ? "bg-[#4338CA] text-white"
+                                            : "text-gray-600 hover:bg-gray-100"
+                                            }`}
+                                    >
+                                        Auto-allocate
+                                    </button>
+                                    <div className="w-px bg-gray-300" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setChequeMode("select")}
+                                        className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition ${chequeMode === "select"
+                                            ? "bg-[#4338CA] text-white"
+                                            : "text-gray-600 hover:bg-gray-100"
+                                            }`}
+                                    >
+                                        Select Invoices
+                                    </button>
+                                </div>
 
-                                    <div className="border border-black/10 rounded-xl max-h-56 overflow-y-auto bg-[#FAFAF8]">
-                                        {invoices.filter(
-                                            (i) => getNumber(i.BalanceAmount) > 0
-                                        ).length === 0 ? (
-                                            <p className="p-4 text-center text-sm text-black/40">
-                                                No unpaid invoices
-                                            </p>
-                                        ) : (
-                                            invoices
-                                                .filter(
-                                                    (i) => getNumber(i.BalanceAmount) > 0
-                                                )
-                                                .map((inv) => {
-                                                    const balance = getNumber(
-                                                        inv.BalanceAmount
+                                {/* Invoice picker (only in select mode) */}
+                                {chequeMode === "select" && (
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label className="text-[13px] text-black/60 font-medium">
+                                                Select Invoices
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const unpaid = invoices.filter(
+                                                        (i) => getNumber(i.BalanceAmount) > 0
                                                     );
-                                                    const checked =
-                                                        selectedInvoiceIds.includes(
+                                                    const allSelected =
+                                                        selectedInvoiceIds.length === unpaid.length;
+                                                    setSelectedInvoiceIds(
+                                                        allSelected ? [] : unpaid.map((i) => i.Id)
+                                                    );
+                                                }}
+                                                className="text-xs text-[#4338CA] font-medium hover:underline"
+                                            >
+                                                {selectedInvoiceIds.length ===
+                                                    invoices.filter((i) => getNumber(i.BalanceAmount) > 0)
+                                                        .length
+                                                    ? "Clear All"
+                                                    : "Select All"}
+                                            </button>
+                                        </div>
+
+                                        <div className="border border-black/10 rounded-xl max-h-56 overflow-y-auto bg-[#FAFAF8]">
+                                            {invoices.filter((i) => getNumber(i.BalanceAmount) > 0)
+                                                .length === 0 ? (
+                                                <p className="p-4 text-center text-sm text-black/40">
+                                                    No unpaid invoices
+                                                </p>
+                                            ) : (
+                                                invoices
+                                                    .filter((i) => getNumber(i.BalanceAmount) > 0)
+                                                    .map((inv) => {
+                                                        const balance = getNumber(inv.BalanceAmount);
+                                                        const checked = selectedInvoiceIds.includes(
                                                             inv.Id
                                                         );
-                                                    return (
-                                                        <label
-                                                            key={inv.Id}
-                                                            className={`flex items-center gap-3 p-3 border-b border-black/5 last:border-0 cursor-pointer hover:bg-white transition ${checked
-                                                                ? "bg-blue-50/40"
-                                                                : ""
-                                                                }`}
-                                                        >
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={checked}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) {
-                                                                        setSelectedInvoiceIds(
-                                                                            (prev) => [
-                                                                                ...prev,
-                                                                                inv.Id,
-                                                                            ]
-                                                                        );
-                                                                    } else {
-                                                                        setSelectedInvoiceIds(
-                                                                            (prev) =>
-                                                                                prev.filter(
-                                                                                    (x) =>
-                                                                                        x !==
-                                                                                        inv.Id
-                                                                                )
-                                                                        );
-                                                                    }
-                                                                }}
-                                                                className="w-4 h-4 accent-[#4338CA]"
-                                                            />
-                                                            <div className="flex-1">
-                                                                <p className="font-mono text-sm font-medium">
-                                                                    {inv.InvoiceNumber}
-                                                                </p>
-                                                                <p className="text-xs text-black/40">
-                                                                    {new Date(
-                                                                        inv.CreatedAt
-                                                                    ).toLocaleDateString()}
-                                                                </p>
-                                                            </div>
-                                                            <span className="font-mono font-semibold text-red-600 text-sm">
-                                                                Rs {formatNumber(balance)}
-                                                            </span>
-                                                        </label>
-                                                    );
-                                                })
-                                        )}
+                                                        return (
+                                                            <label
+                                                                key={inv.Id}
+                                                                className={`flex items-center gap-3 p-3 border-b border-black/5 last:border-0 cursor-pointer hover:bg-white transition ${checked ? "bg-blue-50/40" : ""
+                                                                    }`}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            setSelectedInvoiceIds(
+                                                                                (prev) => [
+                                                                                    ...prev,
+                                                                                    inv.Id,
+                                                                                ]
+                                                                            );
+                                                                        } else {
+                                                                            setSelectedInvoiceIds(
+                                                                                (prev) =>
+                                                                                    prev.filter(
+                                                                                        (x) =>
+                                                                                            x !== inv.Id
+                                                                                    )
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                    className="w-4 h-4 accent-[#4338CA]"
+                                                                />
+                                                                <div className="flex-1">
+                                                                    <p className="font-mono text-sm font-medium">
+                                                                        {inv.InvoiceNumber}
+                                                                    </p>
+                                                                    <p className="text-xs text-black/40">
+                                                                        {new Date(
+                                                                            inv.CreatedAt
+                                                                        ).toLocaleDateString()}
+                                                                    </p>
+                                                                </div>
+                                                                <span className="font-mono font-semibold text-red-600 text-sm">
+                                                                    Rs {formatNumber(balance)}
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    })
+                                            )}
+                                        </div>
                                     </div>
+                                )}
+
+                                {/* Amount */}
+                                <div>
+                                    <label className="text-[13px] text-black/60 font-medium block mb-1">
+                                        Cheque Amount *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={chequeAmountInput || ""}
+                                        onChange={(e) =>
+                                            setChequeAmountInput(Number(e.target.value))
+                                        }
+                                        placeholder="Enter cheque amount"
+                                        className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-[16px] outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
+                                    />
+                                    {chequeMode === "select" && selectedInvoiceIds.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setChequeAmountInput(chequeTotal)}
+                                            className="mt-1 text-xs text-[#4338CA] font-medium hover:underline"
+                                        >
+                                            Set to selected total (Rs {formatNumber(chequeTotal)})
+                                        </button>
+                                    )}
+                                    {chequeMode === "auto" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setChequeAmountInput(totalBalance)}
+                                            className="mt-1 text-xs text-[#4338CA] font-medium hover:underline"
+                                        >
+                                            Set to full outstanding (Rs{" "}
+                                            {formatNumber(totalBalance)})
+                                        </button>
+                                    )}
                                 </div>
 
-                                {/* Computed total */}
-                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
-                                    <span className="text-sm font-medium text-blue-900">
-                                        Cheque Amount ({selectedInvoiceIds.length}{" "}
-                                        invoice
-                                        {selectedInvoiceIds.length === 1 ? "" : "s"})
-                                    </span>
-                                    <span className="font-mono font-bold text-lg text-blue-900">
-                                        Rs {formatNumber(chequeTotal)}
-                                    </span>
-                                </div>
+                                {/* Allocation preview */}
+                                {(chequeMode === "select" ? selectedInvoiceIds.length > 0 : true) &&
+                                    chequeAmountInput > 0 && (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1">
+                                            <p className="text-[11px] font-semibold text-blue-900 uppercase tracking-wider">
+                                                Allocation Preview
+                                            </p>
+                                            {(() => {
+                                                const pool =
+                                                    chequeMode === "select"
+                                                        ? invoices.filter((i) =>
+                                                            selectedInvoiceIds.includes(i.Id)
+                                                        )
+                                                        : invoices.filter(
+                                                            (i) => getNumber(i.BalanceAmount) > 0
+                                                        );
+                                                const sorted = [...pool].sort(
+                                                    (a, b) =>
+                                                        new Date(a.CreatedAt).getTime() -
+                                                        new Date(b.CreatedAt).getTime()
+                                                );
+
+                                                let rem = chequeAmountInput;
+                                                const rows: Array<{
+                                                    invoice: string;
+                                                    alloc: number;
+                                                }> = [];
+
+                                                for (const inv of sorted) {
+                                                    if (rem <= 0) break;
+                                                    const bal = getNumber(inv.BalanceAmount);
+                                                    const alloc = Math.min(bal, rem);
+                                                    rows.push({
+                                                        invoice: inv.InvoiceNumber,
+                                                        alloc,
+                                                    });
+                                                    rem -= alloc;
+                                                }
+
+                                                const advance = rem;
+
+                                                return (
+                                                    <>
+                                                        {rows.map((r) => (
+                                                            <div
+                                                                key={r.invoice}
+                                                                className="flex justify-between text-[12px] text-blue-900"
+                                                            >
+                                                                <span className="font-mono">
+                                                                    {r.invoice}
+                                                                </span>
+                                                                <span className="font-mono">
+                                                                    Rs {formatNumber(r.alloc)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                        {advance > 0 && (
+                                                            <div className="flex justify-between text-[12px] text-amber-700 font-semibold border-t border-blue-200 pt-1 mt-1">
+                                                                <span>→ Advance (pending)</span>
+                                                                <span className="font-mono">
+                                                                    Rs {formatNumber(advance)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
 
                                 {/* Cheque fields */}
                                 <div className="grid grid-cols-2 gap-3">
@@ -805,9 +960,7 @@ export default function CustomerCreditDetails() {
                                         <input
                                             type="text"
                                             value={chequeNumber}
-                                            onChange={(e) =>
-                                                setChequeNumber(e.target.value)
-                                            }
+                                            onChange={(e) => setChequeNumber(e.target.value)}
                                             placeholder="e.g. 123456"
                                             className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
                                         />
@@ -819,9 +972,7 @@ export default function CustomerCreditDetails() {
                                         <input
                                             type="date"
                                             value={chequeDate}
-                                            onChange={(e) =>
-                                                setChequeDate(e.target.value)
-                                            }
+                                            onChange={(e) => setChequeDate(e.target.value)}
                                             className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
                                         />
                                     </div>
@@ -835,7 +986,7 @@ export default function CustomerCreditDetails() {
                                         type="text"
                                         value={chequeNote}
                                         onChange={(e) => setChequeNote(e.target.value)}
-                                        placeholder="e.g. Post-dated cheque"
+                                        placeholder="Any remarks…"
                                         className="w-full border border-black/10 bg-[#FAFAF8] p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#4338CA]/30 focus:border-[#4338CA] transition"
                                     />
                                 </div>
@@ -843,16 +994,18 @@ export default function CustomerCreditDetails() {
                                 <button
                                     onClick={handleRecordCheque}
                                     disabled={
-                                        selectedInvoiceIds.length === 0 ||
+                                        chequeSubmitting ||
+                                        chequeAmountInput <= 0 ||
                                         !chequeNumber.trim() ||
-                                        !chequeDate ||
-                                        chequeSubmitting
+                                        !chequeDate
                                     }
                                     className="w-full bg-[#4338CA] hover:bg-[#372FA6] text-white p-3 rounded-xl font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {chequeSubmitting
                                         ? "Recording..."
-                                        : `Record Cheque — Rs ${formatNumber(chequeTotal)}`}
+                                        : `Record Cheque — Rs ${formatNumber(
+                                            chequeAmountInput
+                                        )}`}
                                 </button>
                             </div>
                         )}

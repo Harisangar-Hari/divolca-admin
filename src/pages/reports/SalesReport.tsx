@@ -34,6 +34,7 @@ export default function SalesReport() {
         endDate: "",
         paymentMode: "",
         customerId: "",
+        includeCancelled: true,
     });
     const [filteredData, setFilteredData] = useState<SaleItem[]>([]);
     const { showToast } = useToast();
@@ -73,13 +74,13 @@ export default function SalesReport() {
                 endDate: filters.endDate || undefined,
                 paymentMode: filters.paymentMode || undefined,
             });
-            
+
             // ✅ Filter by customer locally
             let filtered = res;
             if (filters.customerId) {
                 filtered = res.filter((item: SaleItem) => item.CustomerId === filters.customerId);
             }
-            
+
             setFilteredData(filtered);
         } catch (error) {
             showToast("Failed to apply filters", "error");
@@ -89,7 +90,7 @@ export default function SalesReport() {
     };
 
     const resetFilters = () => {
-        setFilters({ startDate: "", endDate: "", paymentMode: "", customerId: "" });
+        setFilters({ startDate: "", endDate: "", paymentMode: "", customerId: "", includeCancelled: false });
         setFilteredData(data);
     };
 
@@ -269,13 +270,12 @@ export default function SalesReport() {
                                         <td className="px-4 py-3 text-right font-mono text-green-600">LKR {Number(item.PaidAmount).toFixed(2)}</td>
                                         <td className="px-4 py-3 text-right font-mono text-red-600">LKR {Number(item.BalanceAmount).toFixed(2)}</td>
                                         <td className="px-4 py-3 text-center">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                item.PaymentMode === "credit"
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.PaymentMode === "credit"
                                                     ? "bg-purple-100 text-purple-800"
                                                     : item.PaymentMode === "cash"
                                                         ? "bg-green-100 text-green-800"
                                                         : "bg-blue-100 text-blue-800"
-                                            }`}>
+                                                }`}>
                                                 {item.PaymentMode.toUpperCase()}
                                             </span>
                                         </td>
