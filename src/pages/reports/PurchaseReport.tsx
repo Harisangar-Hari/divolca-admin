@@ -14,6 +14,7 @@ interface PurchaseItem {
     SupplierName: string;
     SupplierPhone: string;
     TotalItems: number;
+    PurchaseNumber: string;
 }
 
 export default function PurchaseReport() {
@@ -65,7 +66,7 @@ export default function PurchaseReport() {
         try {
             // Prepare data for Excel
             const excelData = filteredData.map((item) => ({
-                'Invoice Number': item.InvoiceNumber,
+                'Invoice Number': item.PurchaseNumber,
                 'Supplier': item.SupplierName,
                 'Phone': item.SupplierPhone || '-',
                 'Date': new Date(item.PurchaseDate).toLocaleDateString(),
@@ -209,7 +210,8 @@ export default function PurchaseReport() {
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th className="px-4 py-3 text-left font-semibold text-gray-600">Invoice</th>
+                                <th className="px-4 py-3 text-left font-semibold text-gray-600">Purchase Number</th>
+                                <th className="px-4 py-3 text-left font-semibold text-gray-600">Invoice Number</th>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Supplier</th>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Phone</th>
                                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
@@ -227,7 +229,8 @@ export default function PurchaseReport() {
                             ) : (
                                 filteredData.map((item) => (
                                     <tr key={item.Id} className="border-b border-gray-100 hover:bg-gray-50 transition">
-                                        <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.InvoiceNumber}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.PurchaseNumber}</td>
+                                        <td className="px-4 py-3 text-gray-800">{item.InvoiceNumber}</td>
                                         <td className="px-4 py-3 text-gray-800">{item.SupplierName}</td>
                                         <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.SupplierPhone || "-"}</td>
                                         <td className="px-4 py-3 text-gray-500">{new Date(item.PurchaseDate).toLocaleDateString()}</td>
