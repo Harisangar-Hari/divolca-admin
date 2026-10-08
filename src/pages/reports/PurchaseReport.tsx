@@ -69,9 +69,9 @@ export default function PurchaseReport() {
                 'Supplier': item.SupplierName,
                 'Phone': item.SupplierPhone || '-',
                 'Date': new Date(item.PurchaseDate).toLocaleDateString(),
-                'Total (LKR)': Number(item.GrandTotal).toFixed(2),
-                'Paid (LKR)': Number(item.PaidAmount).toFixed(2),
-                'Balance (LKR)': Number(item.BalanceAmount).toFixed(2),
+                'Total (LKR)': Number(item.GrandTotal),
+                'Paid (LKR)': Number(item.PaidAmount),
+                'Balance (LKR)': Number(item.BalanceAmount),
                 'Items': item.TotalItems,
             }));
 
